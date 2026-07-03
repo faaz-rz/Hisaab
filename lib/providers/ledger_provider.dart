@@ -1,8 +1,10 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../models/bank_ledger.dart';
 import '../services/database_service.dart';
+import '../services/cloud_sync_service.dart';
 
-final ledgerProvider = StateNotifierProvider<LedgerNotifier, AsyncValue<List<BankLedger>>>((ref) {
+final ledgerProvider =
+    StateNotifierProvider<LedgerNotifier, AsyncValue<List<BankLedger>>>((ref) {
   return LedgerNotifier();
 });
 
@@ -26,18 +28,22 @@ class LedgerNotifier extends StateNotifier<AsyncValue<List<BankLedger>>> {
   Future<void> addLedgerEntry(BankLedger entry) async {
     final db = await DatabaseService.instance.database;
     await db.insert('bank_ledger', entry.toMap());
+    await CloudSyncService.instance.pushLocalIfEnabled();
     await loadLedger();
   }
 
   Future<void> updateLedgerEntry(BankLedger entry) async {
     final db = await DatabaseService.instance.database;
-    await db.update('bank_ledger', entry.toMap(), where: 'id = ?', whereArgs: [entry.id]);
+    await db.update('bank_ledger', entry.toMap(),
+        where: 'id = ?', whereArgs: [entry.id]);
+    await CloudSyncService.instance.pushLocalIfEnabled();
     await loadLedger();
   }
 
   Future<void> deleteLedgerEntry(int id) async {
     final db = await DatabaseService.instance.database;
     await db.delete('bank_ledger', where: 'id = ?', whereArgs: [id]);
+    await CloudSyncService.instance.pushLocalIfEnabled();
     await loadLedger();
   }
 }

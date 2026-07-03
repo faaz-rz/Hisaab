@@ -8,21 +8,22 @@ import 'package:flutter/foundation.dart';
 
 class DatabaseService {
   static final DatabaseService instance = DatabaseService._init();
+  static const databaseFileName = 'pharmacy_management_v7.db';
   static Database? _database;
 
   DatabaseService._init();
 
   Future<Database> get database async {
     if (_database != null) return _database!;
-    _database = await _initDB(
-        'pharmacy_management_v7.db'); // Forced recreation for schema v7 (fixes bank_code missing)
+    _database = await _initDB(databaseFileName);
     return _database!;
   }
 
   Future<String> getDatabaseFilePath() async {
     final docsPath = await getApplicationDocumentsDirectory();
-    return join(
-        docsPath.path, 'PharmacyManagement', 'pharmacy_management_v7.db');
+    final dbDirectory = Directory(join(docsPath.path, 'PharmacyManagement'));
+    await dbDirectory.create(recursive: true);
+    return join(dbDirectory.path, databaseFileName);
   }
 
   Future<void> runDailyAutoBackup() async {
@@ -32,13 +33,12 @@ class DatabaseService {
       if (backupPath == null || backupPath.isEmpty) return;
 
       final dateStr = DateFormat('yyyy-MM-dd').format(DateTime.now());
-      final savePath = '$backupPath\\pharmacy_autobackup_$dateStr.db';
+      final savePath = join(backupPath, 'pharmacy_autobackup_$dateStr.db');
 
-      final dbFile = File(await getDatabaseFilePath());
       final backupFile = File(savePath);
 
-      if (!await backupFile.exists() && await dbFile.exists()) {
-        await dbFile.copy(savePath);
+      if (!await backupFile.exists()) {
+        await copyDatabaseTo(savePath);
         debugPrint('Auto-backup completed: $savePath');
       }
     } catch (e) {
@@ -48,7 +48,9 @@ class DatabaseService {
 
   Future<Database> _initDB(String filePath) async {
     final docsPath = await getApplicationDocumentsDirectory();
-    final path = join(docsPath.path, 'PharmacyManagement', filePath);
+    final dbDirectory = Directory(join(docsPath.path, 'PharmacyManagement'));
+    await dbDirectory.create(recursive: true);
+    final path = join(dbDirectory.path, filePath);
 
     final db = await openDatabase(
       path,
@@ -69,39 +71,39 @@ class DatabaseService {
       await db.execute(
           'ALTER TABLE transactions ADD COLUMN paid_amount REAL DEFAULT 0');
       debugPrint('Migration: added paid_amount column to transactions');
-    } catch (_) {
-      // Column already exists — ignore
+    } catch (e) {
+      debugPrint('Migration skipped (expected): $e');
     }
     try {
       await db
           .execute('ALTER TABLE transactions ADD COLUMN payment_method TEXT');
       debugPrint('Migration: added payment_method column to transactions');
-    } catch (_) {
-      // Column already exists — ignore
+    } catch (e) {
+      debugPrint('Migration skipped (expected): $e');
     }
     try {
       await db.execute('ALTER TABLE transactions ADD COLUMN receipt_no TEXT');
       debugPrint('Migration: added receipt_no column to transactions');
-    } catch (_) {
-      // Column already exists — ignore
+    } catch (e) {
+      debugPrint('Migration skipped (expected): $e');
     }
     try {
       await db.execute('ALTER TABLE expenses ADD COLUMN subcategory TEXT');
       debugPrint('Migration: added subcategory column to expenses');
-    } catch (_) {
-      // Column already exists — ignore
+    } catch (e) {
+      debugPrint('Migration skipped (expected): $e');
     }
     try {
       await db.execute('ALTER TABLE expenses ADD COLUMN item TEXT');
       debugPrint('Migration: added item column to expenses');
-    } catch (_) {
-      // Column already exists — ignore
+    } catch (e) {
+      debugPrint('Migration skipped (expected): $e');
     }
     try {
       await db.execute('ALTER TABLE expenses ADD COLUMN payment_method TEXT');
       debugPrint('Migration: added expense payment_method column');
-    } catch (_) {
-      // Column already exists — ignore
+    } catch (e) {
+      debugPrint('Migration skipped (expected): $e');
     }
   }
 
@@ -193,7 +195,63 @@ CREATE TABLE bank_ledger (
   }
 
   Future<void> close() async {
-    final db = await instance.database;
-    db.close();
+    final db = _database;
+    if (db == null) return;
+    await db.close();
+    _database = null;
+  }
+
+  Future<void> copyDatabaseTo(String destinationPath) async {
+    final sourcePath = await getDatabaseFilePath();
+
+    if (!await File(sourcePath).exists()) {
+      await database;
+    }
+
+    await _prepareForFileCopy();
+
+    final destinationFile = File(destinationPath);
+    await destinationFile.parent.create(recursive: true);
+    await File(sourcePath).copy(destinationPath);
+  }
+
+  Future<void> replaceDatabaseFromFile(String sourcePath) async {
+    await close();
+
+    final destinationPath = await getDatabaseFilePath();
+    final normalizedSource = normalize(absolute(sourcePath));
+    final normalizedDestination = normalize(absolute(destinationPath));
+    if (normalizedSource == normalizedDestination) {
+      _database = null;
+      return;
+    }
+
+    final destinationFile = File(destinationPath);
+    await destinationFile.parent.create(recursive: true);
+    await _deleteSQLiteSidecars(destinationPath);
+    await File(sourcePath).copy(destinationPath);
+    _database = null;
+  }
+
+  Future<void> _prepareForFileCopy() async {
+    final db = _database;
+    if (db == null) return;
+
+    try {
+      await db.rawQuery('PRAGMA wal_checkpoint(FULL)');
+    } catch (e) {
+      debugPrint('SQLite checkpoint skipped: $e');
+    }
+
+    await close();
+  }
+
+  Future<void> _deleteSQLiteSidecars(String databasePath) async {
+    for (final suffix in ['', '-wal', '-shm', '-journal']) {
+      final file = File('$databasePath$suffix');
+      if (await file.exists()) {
+        await file.delete();
+      }
+    }
   }
 }

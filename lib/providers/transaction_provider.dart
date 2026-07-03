@@ -2,6 +2,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../models/transaction_model.dart';
 import '../services/database_service.dart';
 import '../services/agency_service.dart';
+import '../services/cloud_sync_service.dart';
 
 final transactionsProvider = StateNotifierProvider<TransactionNotifier,
     AsyncValue<List<TransactionModel>>>((ref) {
@@ -49,6 +50,7 @@ class TransactionNotifier
     final db = await DatabaseService.instance.database;
     await db.insert('transactions', tx.toMap());
     await _saveAgencyIfPresent(tx);
+    await CloudSyncService.instance.pushLocalIfEnabled();
     await loadTransactions();
   }
 
@@ -57,12 +59,14 @@ class TransactionNotifier
     await db.update('transactions', tx.toMap(),
         where: 'id = ?', whereArgs: [tx.id]);
     await _saveAgencyIfPresent(tx);
+    await CloudSyncService.instance.pushLocalIfEnabled();
     await loadTransactions();
   }
 
   Future<void> deleteTransaction(int id) async {
     final db = await DatabaseService.instance.database;
     await db.delete('transactions', where: 'id = ?', whereArgs: [id]);
+    await CloudSyncService.instance.pushLocalIfEnabled();
     await loadTransactions();
   }
 
@@ -135,6 +139,7 @@ class TransactionNotifier
       'UPDATE transactions SET paid_amount = paid_amount + ? WHERE id = ?',
       [amount, billId],
     );
+    await CloudSyncService.instance.pushLocalIfEnabled();
     await loadTransactions();
   }
 }

@@ -1,14 +1,15 @@
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
 import 'package:google_fonts/google_fonts.dart';
 import '../providers/ledger_provider.dart';
 import '../models/bank_ledger.dart';
 import '../widgets/add_ledger_dialog.dart';
+import '../widgets/confirm_delete_dialog.dart';
+import '../widgets/password_auth_gate.dart';
+import '../mixins/date_filter_mixin.dart';
 import '../services/pdf_service.dart';
 import '../services/password_service.dart';
-import '../widgets/month_year_picker.dart';
 import '../main.dart';
 
 class LedgerScreen extends ConsumerStatefulWidget {
@@ -28,379 +29,20 @@ class _LedgerScreenState extends ConsumerState<LedgerScreen> {
   @override
   Widget build(BuildContext context) {
     if (!_authenticated) {
-      return _LedgerAuthScreen(onSuccess: _onAuthenticated);
-    }
-    return const _LedgerDashboard();
-  }
-}
-
-// ════════════════════════════════════════════════════════════════
-// ─── AUTH SCREEN (handles both create & verify) ───────────────
-// ════════════════════════════════════════════════════════════════
-class _LedgerAuthScreen extends StatefulWidget {
-  final VoidCallback onSuccess;
-  const _LedgerAuthScreen({required this.onSuccess});
-
-  @override
-  State<_LedgerAuthScreen> createState() => _LedgerAuthScreenState();
-}
-
-class _LedgerAuthScreenState extends State<_LedgerAuthScreen>
-    with SingleTickerProviderStateMixin {
-  final _pinController = TextEditingController();
-  final _confirmController = TextEditingController();
-  final _focusNode = FocusNode();
-  final _confirmFocusNode = FocusNode();
-  bool _obscure = true;
-  bool _obscureConfirm = true;
-  String? _error;
-  bool _isCreatingPassword = false;
-  bool _loading = true;
-  late AnimationController _shakeController;
-  late Animation<double> _shakeAnimation;
-
-  @override
-  void initState() {
-    super.initState();
-    _shakeController = AnimationController(
-      duration: const Duration(milliseconds: 500),
-      vsync: this,
-    );
-    _shakeAnimation = Tween<double>(begin: 0, end: 1).animate(
-      CurvedAnimation(parent: _shakeController, curve: Curves.elasticIn),
-    );
-    _checkPasswordStatus();
-  }
-
-  Future<void> _checkPasswordStatus() async {
-    final isSet = await PasswordService.instance.isLedgerPasswordSet();
-    setState(() {
-      _isCreatingPassword = !isSet;
-      _loading = false;
-    });
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      _focusNode.requestFocus();
-    });
-  }
-
-  @override
-  void dispose() {
-    _pinController.dispose();
-    _confirmController.dispose();
-    _focusNode.dispose();
-    _confirmFocusNode.dispose();
-    _shakeController.dispose();
-    super.dispose();
-  }
-
-  void _submit() async {
-    if (_isCreatingPassword) {
-      // ── Creating a new password ──
-      final pwd = _pinController.text.trim();
-      final confirm = _confirmController.text.trim();
-      if (pwd.isEmpty || pwd.length < 4) {
-        setState(() => _error = 'Password must be at least 4 digits');
-        _shakeController.forward(from: 0);
-        return;
-      }
-      if (pwd != confirm) {
-        setState(() => _error = 'Passwords do not match');
-        _shakeController.forward(from: 0);
-        _confirmController.clear();
-        _confirmFocusNode.requestFocus();
-        return;
-      }
-      await PasswordService.instance.setLedgerPassword(pwd);
-      widget.onSuccess();
-    } else {
-      // ── Verifying existing password ──
-      final isCorrect = await PasswordService.instance
-          .verifyLedgerPassword(_pinController.text);
-      if (isCorrect) {
-        widget.onSuccess();
-      } else {
-        setState(() => _error = 'Incorrect password. Try again.');
-        _shakeController.forward(from: 0);
-        _pinController.clear();
-        _focusNode.requestFocus();
-      }
-    }
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    if (_loading) {
-      return const Scaffold(
-        backgroundColor: AppColors.surface,
-        body: Center(child: CircularProgressIndicator()),
+      return PasswordAuthGate(
+        title: 'Bank Ledger',
+        createMessage: 'Create a password to protect your financial data',
+        verifyMessage: 'Enter password to access sensitive financial data',
+        icon: Icons.shield_rounded,
+        isPasswordSet: PasswordService.instance.isLedgerPasswordSet,
+        setPassword: PasswordService.instance.setLedgerPassword,
+        verifyPassword: PasswordService.instance.verifyLedgerPassword,
+        onSuccess: _onAuthenticated,
+        wrapInScaffold: true,
+        width: 420,
       );
     }
-
-    return Scaffold(
-      backgroundColor: AppColors.surface,
-      body: Center(
-        child: AnimatedBuilder(
-          animation: _shakeAnimation,
-          builder: (context, child) {
-            final dx = _shakeAnimation.value *
-                10 *
-                ((_shakeController.value * 8).toInt().isEven ? 1 : -1);
-            return Transform.translate(offset: Offset(dx, 0), child: child);
-          },
-          child: Container(
-            width: 420,
-            padding: const EdgeInsets.all(36),
-            decoration: BoxDecoration(
-              color: Colors.white,
-              borderRadius: BorderRadius.circular(24),
-              boxShadow: [
-                BoxShadow(
-                  color: AppColors.primary.withOpacity(0.08),
-                  blurRadius: 40,
-                  offset: const Offset(0, 12),
-                ),
-              ],
-            ),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                // Shield icon
-                Container(
-                  width: 72,
-                  height: 72,
-                  decoration: BoxDecoration(
-                    gradient: const LinearGradient(
-                      colors: [AppColors.primary, AppColors.primaryLight],
-                      begin: Alignment.topLeft,
-                      end: Alignment.bottomRight,
-                    ),
-                    borderRadius: BorderRadius.circular(20),
-                    boxShadow: [
-                      BoxShadow(
-                        color: AppColors.primary.withOpacity(0.3),
-                        blurRadius: 20,
-                        offset: const Offset(0, 8),
-                      ),
-                    ],
-                  ),
-                  child: Icon(
-                    _isCreatingPassword
-                        ? Icons.lock_rounded
-                        : Icons.shield_rounded,
-                    color: Colors.white,
-                    size: 36,
-                  ),
-                ),
-                const SizedBox(height: 24),
-                Text(
-                  'Bank Ledger',
-                  style: GoogleFonts.inter(
-                    fontSize: 22,
-                    fontWeight: FontWeight.w800,
-                    color: AppColors.textPrimary,
-                  ),
-                ),
-                const SizedBox(height: 6),
-                Text(
-                  _isCreatingPassword
-                      ? 'Create a password to protect your financial data'
-                      : 'Enter password to access sensitive financial data',
-                  textAlign: TextAlign.center,
-                  style: GoogleFonts.inter(
-                    fontSize: 13,
-                    color: AppColors.textSecondary,
-                    height: 1.5,
-                  ),
-                ),
-                const SizedBox(height: 28),
-
-                // Password field
-                TextFormField(
-                  controller: _pinController,
-                  focusNode: _focusNode,
-                  obscureText: _obscure,
-                  keyboardType: TextInputType.number,
-                  inputFormatters: [FilteringTextInputFormatter.digitsOnly],
-                  style: GoogleFonts.inter(
-                    fontSize: 18,
-                    fontWeight: FontWeight.w600,
-                    letterSpacing: 6,
-                    color: AppColors.textPrimary,
-                  ),
-                  textAlign: TextAlign.center,
-                  decoration: InputDecoration(
-                    hintText: '• • • • • • • •',
-                    hintStyle: GoogleFonts.inter(
-                      fontSize: 18,
-                      letterSpacing: 6,
-                      color: AppColors.textSecondary.withOpacity(0.3),
-                    ),
-                    labelText: _isCreatingPassword ? 'New Password' : null,
-                    labelStyle: GoogleFonts.inter(
-                      fontSize: 14,
-                      color: AppColors.textSecondary,
-                      letterSpacing: 0,
-                    ),
-                    filled: true,
-                    fillColor: AppColors.surface,
-                    contentPadding: const EdgeInsets.symmetric(
-                        horizontal: 20, vertical: 18),
-                    border: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(14),
-                      borderSide: BorderSide.none,
-                    ),
-                    enabledBorder: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(14),
-                      borderSide: BorderSide(
-                        color: _error != null
-                            ? AppColors.danger.withOpacity(0.5)
-                            : AppColors.divider,
-                      ),
-                    ),
-                    focusedBorder: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(14),
-                      borderSide:
-                          const BorderSide(color: AppColors.accent, width: 2),
-                    ),
-                    suffixIcon: IconButton(
-                      icon: Icon(
-                        _obscure
-                            ? Icons.visibility_off_rounded
-                            : Icons.visibility_rounded,
-                        color: AppColors.textSecondary,
-                        size: 20,
-                      ),
-                      onPressed: () => setState(() => _obscure = !_obscure),
-                    ),
-                  ),
-                  onFieldSubmitted: (_) {
-                    if (_isCreatingPassword) {
-                      _confirmFocusNode.requestFocus();
-                    } else {
-                      _submit();
-                    }
-                  },
-                ),
-
-                // Confirm password field (only for creation)
-                if (_isCreatingPassword) ...[
-                  const SizedBox(height: 16),
-                  TextFormField(
-                    controller: _confirmController,
-                    focusNode: _confirmFocusNode,
-                    obscureText: _obscureConfirm,
-                    keyboardType: TextInputType.number,
-                    inputFormatters: [FilteringTextInputFormatter.digitsOnly],
-                    style: GoogleFonts.inter(
-                      fontSize: 18,
-                      fontWeight: FontWeight.w600,
-                      letterSpacing: 6,
-                      color: AppColors.textPrimary,
-                    ),
-                    textAlign: TextAlign.center,
-                    decoration: InputDecoration(
-                      hintText: '• • • • • • • •',
-                      hintStyle: GoogleFonts.inter(
-                        fontSize: 18,
-                        letterSpacing: 6,
-                        color: AppColors.textSecondary.withOpacity(0.3),
-                      ),
-                      labelText: 'Confirm Password',
-                      labelStyle: GoogleFonts.inter(
-                        fontSize: 14,
-                        color: AppColors.textSecondary,
-                        letterSpacing: 0,
-                      ),
-                      filled: true,
-                      fillColor: AppColors.surface,
-                      contentPadding: const EdgeInsets.symmetric(
-                          horizontal: 20, vertical: 18),
-                      border: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(14),
-                        borderSide: BorderSide.none,
-                      ),
-                      enabledBorder: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(14),
-                        borderSide: const BorderSide(color: AppColors.divider),
-                      ),
-                      focusedBorder: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(14),
-                        borderSide:
-                            const BorderSide(color: AppColors.accent, width: 2),
-                      ),
-                      suffixIcon: IconButton(
-                        icon: Icon(
-                          _obscureConfirm
-                              ? Icons.visibility_off_rounded
-                              : Icons.visibility_rounded,
-                          color: AppColors.textSecondary,
-                          size: 20,
-                        ),
-                        onPressed: () =>
-                            setState(() => _obscureConfirm = !_obscureConfirm),
-                      ),
-                    ),
-                    onFieldSubmitted: (_) => _submit(),
-                  ),
-                ],
-
-                if (_error != null) ...[
-                  const SizedBox(height: 10),
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      const Icon(Icons.error_outline_rounded,
-                          color: AppColors.danger, size: 16),
-                      const SizedBox(width: 6),
-                      Flexible(
-                        child: Text(
-                          _error!,
-                          style: GoogleFonts.inter(
-                            fontSize: 12,
-                            color: AppColors.danger,
-                            fontWeight: FontWeight.w500,
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
-                ],
-                const SizedBox(height: 24),
-
-                // Unlock / Create button
-                SizedBox(
-                  width: double.infinity,
-                  height: 50,
-                  child: FilledButton.icon(
-                    onPressed: _submit,
-                    icon: Icon(
-                      _isCreatingPassword
-                          ? Icons.lock_rounded
-                          : Icons.lock_open_rounded,
-                      size: 20,
-                    ),
-                    label: Text(
-                      _isCreatingPassword ? 'Create Password' : 'Unlock',
-                      style: GoogleFonts.inter(
-                        fontSize: 15,
-                        fontWeight: FontWeight.w600,
-                      ),
-                    ),
-                    style: FilledButton.styleFrom(
-                      backgroundColor: AppColors.primary,
-                      foregroundColor: Colors.white,
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(14),
-                      ),
-                    ),
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ),
-      ),
-    );
+    return const _LedgerDashboard();
   }
 }
 
@@ -507,236 +149,6 @@ class _LedgerDashboardState extends ConsumerState<_LedgerDashboard> {
     Icons.apartment_rounded,
   ];
 
-  void _showChangePasswordDialog(BuildContext context) {
-    final oldPwdCtrl = TextEditingController();
-    final newPwdCtrl = TextEditingController();
-    final confirmPwdCtrl = TextEditingController();
-    String? dialogError;
-    bool obscureOld = true;
-    bool obscureNew = true;
-    bool obscureConfirm = true;
-
-    showDialog(
-      context: context,
-      builder: (ctx) => StatefulBuilder(
-        builder: (context, setDialogState) {
-          return AlertDialog(
-            shape:
-                RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-            title: Row(
-              children: [
-                Container(
-                  padding: const EdgeInsets.all(8),
-                  decoration: BoxDecoration(
-                    color: AppColors.primary.withOpacity(0.1),
-                    borderRadius: BorderRadius.circular(10),
-                  ),
-                  child: const Icon(Icons.lock_reset_rounded,
-                      color: AppColors.primary, size: 22),
-                ),
-                const SizedBox(width: 12),
-                Text(
-                  'Change Ledger Password',
-                  style: GoogleFonts.inter(
-                    fontSize: 18,
-                    fontWeight: FontWeight.w700,
-                    color: AppColors.textPrimary,
-                  ),
-                ),
-              ],
-            ),
-            content: SizedBox(
-              width: 380,
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  TextField(
-                    controller: oldPwdCtrl,
-                    obscureText: obscureOld,
-                    keyboardType: TextInputType.number,
-                    inputFormatters: [FilteringTextInputFormatter.digitsOnly],
-                    style: GoogleFonts.inter(
-                        fontSize: 16,
-                        fontWeight: FontWeight.w600,
-                        letterSpacing: 4),
-                    decoration: InputDecoration(
-                      labelText: 'Current Password',
-                      labelStyle: GoogleFonts.inter(
-                          fontSize: 14,
-                          color: AppColors.textSecondary,
-                          letterSpacing: 0),
-                      suffixIcon: IconButton(
-                        icon: Icon(
-                          obscureOld
-                              ? Icons.visibility_off_rounded
-                              : Icons.visibility_rounded,
-                          size: 20,
-                          color: AppColors.textSecondary,
-                        ),
-                        onPressed: () =>
-                            setDialogState(() => obscureOld = !obscureOld),
-                      ),
-                    ),
-                  ),
-                  const SizedBox(height: 16),
-                  TextField(
-                    controller: newPwdCtrl,
-                    obscureText: obscureNew,
-                    keyboardType: TextInputType.number,
-                    inputFormatters: [FilteringTextInputFormatter.digitsOnly],
-                    style: GoogleFonts.inter(
-                        fontSize: 16,
-                        fontWeight: FontWeight.w600,
-                        letterSpacing: 4),
-                    decoration: InputDecoration(
-                      labelText: 'New Password',
-                      labelStyle: GoogleFonts.inter(
-                          fontSize: 14,
-                          color: AppColors.textSecondary,
-                          letterSpacing: 0),
-                      suffixIcon: IconButton(
-                        icon: Icon(
-                          obscureNew
-                              ? Icons.visibility_off_rounded
-                              : Icons.visibility_rounded,
-                          size: 20,
-                          color: AppColors.textSecondary,
-                        ),
-                        onPressed: () =>
-                            setDialogState(() => obscureNew = !obscureNew),
-                      ),
-                    ),
-                  ),
-                  const SizedBox(height: 16),
-                  TextField(
-                    controller: confirmPwdCtrl,
-                    obscureText: obscureConfirm,
-                    keyboardType: TextInputType.number,
-                    inputFormatters: [FilteringTextInputFormatter.digitsOnly],
-                    style: GoogleFonts.inter(
-                        fontSize: 16,
-                        fontWeight: FontWeight.w600,
-                        letterSpacing: 4),
-                    decoration: InputDecoration(
-                      labelText: 'Confirm New Password',
-                      labelStyle: GoogleFonts.inter(
-                          fontSize: 14,
-                          color: AppColors.textSecondary,
-                          letterSpacing: 0),
-                      suffixIcon: IconButton(
-                        icon: Icon(
-                          obscureConfirm
-                              ? Icons.visibility_off_rounded
-                              : Icons.visibility_rounded,
-                          size: 20,
-                          color: AppColors.textSecondary,
-                        ),
-                        onPressed: () => setDialogState(
-                            () => obscureConfirm = !obscureConfirm),
-                      ),
-                    ),
-                  ),
-                  if (dialogError != null) ...[
-                    const SizedBox(height: 14),
-                    Container(
-                      padding: const EdgeInsets.symmetric(
-                          horizontal: 12, vertical: 8),
-                      decoration: BoxDecoration(
-                        color: AppColors.danger.withOpacity(0.08),
-                        borderRadius: BorderRadius.circular(8),
-                      ),
-                      child: Row(
-                        children: [
-                          const Icon(Icons.error_outline_rounded,
-                              color: AppColors.danger, size: 16),
-                          const SizedBox(width: 8),
-                          Expanded(
-                            child: Text(
-                              dialogError!,
-                              style: GoogleFonts.inter(
-                                fontSize: 12,
-                                color: AppColors.danger,
-                                fontWeight: FontWeight.w500,
-                              ),
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ],
-                ],
-              ),
-            ),
-            actions: [
-              TextButton(
-                onPressed: () => Navigator.of(ctx).pop(),
-                child: const Text('Cancel'),
-              ),
-              FilledButton.icon(
-                onPressed: () async {
-                  final oldPwd = oldPwdCtrl.text.trim();
-                  final newPwd = newPwdCtrl.text.trim();
-                  final confirmPwd = confirmPwdCtrl.text.trim();
-
-                  if (oldPwd.isEmpty) {
-                    setDialogState(
-                        () => dialogError = 'Enter your current password');
-                    return;
-                  }
-                  if (newPwd.isEmpty || newPwd.length < 4) {
-                    setDialogState(() =>
-                        dialogError = 'New password must be at least 4 digits');
-                    return;
-                  }
-                  if (newPwd != confirmPwd) {
-                    setDialogState(
-                        () => dialogError = 'New passwords do not match');
-                    return;
-                  }
-
-                  final success = await PasswordService.instance
-                      .changeLedgerPassword(oldPwd, newPwd);
-                  if (!ctx.mounted) return;
-                  if (success) {
-                    Navigator.of(ctx).pop();
-                    ScaffoldMessenger.of(ctx).showSnackBar(
-                      SnackBar(
-                        content: Row(
-                          children: [
-                            const Icon(Icons.check_circle_rounded,
-                                color: Colors.white, size: 20),
-                            const SizedBox(width: 10),
-                            Text('Ledger password changed successfully',
-                                style: GoogleFonts.inter(
-                                    fontWeight: FontWeight.w500)),
-                          ],
-                        ),
-                        backgroundColor: AppColors.success,
-                        behavior: SnackBarBehavior.floating,
-                        shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(10)),
-                      ),
-                    );
-                  } else {
-                    setDialogState(
-                        () => dialogError = 'Current password is incorrect');
-                  }
-                },
-                icon: const Icon(Icons.check_rounded, size: 18),
-                label: const Text('Change Password'),
-                style: FilledButton.styleFrom(
-                  backgroundColor: AppColors.primary,
-                  shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(10)),
-                ),
-              ),
-            ],
-          );
-        },
-      ),
-    );
-  }
-
   @override
   Widget build(BuildContext context) {
     if (_selectedBank != null) {
@@ -757,7 +169,12 @@ class _LedgerDashboardState extends ConsumerState<_LedgerDashboard> {
           IconButton(
             icon: const Icon(Icons.lock_reset_rounded),
             tooltip: 'Change Password',
-            onPressed: () => _showChangePasswordDialog(context),
+            onPressed: () => showChangePasswordDialog(
+              context,
+              title: 'Change Ledger Password',
+              successMessage: 'Ledger password changed successfully',
+              changePassword: PasswordService.instance.changeLedgerPassword,
+            ),
           ),
         ],
       ),
@@ -1339,70 +756,18 @@ class _BankDetailView extends ConsumerStatefulWidget {
   ConsumerState<_BankDetailView> createState() => _BankDetailViewState();
 }
 
-class _BankDetailViewState extends ConsumerState<_BankDetailView> {
-  DateTimeRange? _dateRange;
-
-  void _pickDateRange() async {
-    final range = await showDateRangePicker(
-      context: context,
-      firstDate: DateTime(2020),
-      lastDate: DateTime.now(),
-      initialDateRange: _dateRange,
+class _BankDetailViewState extends ConsumerState<_BankDetailView>
+    with DateFilterMixin<_BankDetailView> {
+  Future<void> _confirmDeleteLedgerEntry(BankLedger entry) async {
+    final confirmed = await confirmDeleteDialog(
+      context,
+      title: 'Delete Ledger Entry',
+      message: 'This ledger entry will be permanently removed.',
+      details:
+          '${entry.type.toUpperCase()} • ${_ledgerAccountLabel(entry.accountNo)} • ₹${entry.amount.toStringAsFixed(0)}',
     );
-    if (range != null) {
-      setState(() => _dateRange = range);
-    }
-  }
-
-  void _clearDateRange() => setState(() => _dateRange = null);
-
-  void _pickMonth() async {
-    final date = await showMonthYearPicker(context, onlyYear: false);
-    if (date != null) {
-      setState(() {
-        _dateRange = DateTimeRange(
-          start: DateTime(date.year, date.month, 1),
-          end: DateTime(date.year, date.month + 1, 0),
-        );
-      });
-    }
-  }
-
-  void _pickYear() async {
-    final date = await showMonthYearPicker(context, onlyYear: true);
-    if (date != null) {
-      setState(() {
-        _dateRange = DateTimeRange(
-          start: DateTime(date.year, 1, 1),
-          end: DateTime(date.year, 12, 31),
-        );
-      });
-    }
-  }
-
-  void _setPresetDateRange(String preset) {
-    final now = DateTime.now();
-    DateTime start;
-    DateTime end = now;
-
-    if (preset == 'week') {
-      start = now.subtract(Duration(days: now.weekday - 1));
-    } else if (preset == 'month') {
-      start = DateTime(now.year, now.month, 1);
-    } else if (preset == 'year') {
-      start = DateTime(now.year, 1, 1);
-    } else {
-      _clearDateRange();
-      return;
-    }
-    setState(() => _dateRange = DateTimeRange(start: start, end: end));
-  }
-
-  bool _isWithinRange(String dateStr) {
-    if (_dateRange == null) return true;
-    final date = DateTime.parse(dateStr);
-    return date.isAfter(_dateRange!.start.subtract(const Duration(days: 1))) &&
-        date.isBefore(_dateRange!.end.add(const Duration(days: 1)));
+    if (!confirmed || !mounted || entry.id == null) return;
+    await ref.read(ledgerProvider.notifier).deleteLedgerEntry(entry.id!);
   }
 
   @override
@@ -1423,44 +788,21 @@ class _BankDetailViewState extends ConsumerState<_BankDetailView> {
           PopupMenuButton<String>(
             icon: const Icon(Icons.tune_rounded),
             tooltip: 'Filter Ledger',
-            onSelected: (value) {
-              if (value == 'custom') {
-                _pickDateRange();
-              } else if (value == 'pick_month') {
-                _pickMonth();
-              } else if (value == 'pick_year') {
-                _pickYear();
-              } else {
-                _setPresetDateRange(value);
-              }
-            },
-            itemBuilder: (context) => [
-              const PopupMenuItem(value: 'all', child: Text('All Time')),
-              const PopupMenuDivider(),
-              const PopupMenuItem(value: 'week', child: Text('This Week')),
-              const PopupMenuItem(value: 'month', child: Text('This Month')),
-              const PopupMenuItem(value: 'year', child: Text('This Year')),
-              const PopupMenuDivider(),
-              const PopupMenuItem(
-                  value: 'pick_month', child: Text('Select Month...')),
-              const PopupMenuItem(
-                  value: 'pick_year', child: Text('Select Year...')),
-              const PopupMenuItem(
-                  value: 'custom', child: Text('Custom Date Range...')),
-            ],
+            onSelected: handleDateFilterSelection,
+            itemBuilder: (context) => buildFilterMenu(),
           ),
-          if (_dateRange != null)
+          if (dateRange != null)
             IconButton(
                 icon: const Icon(Icons.clear_rounded),
-                onPressed: _clearDateRange,
+                onPressed: clearDateRange,
                 tooltip: 'Clear Filter'),
         ],
       ),
       body: ledgerAsync.when(
         data: (allEntries) {
           final entries = allEntries
-              .where((e) =>
-                  e.bankName == widget.bankName && _isWithinRange(e.date))
+              .where(
+                  (e) => e.bankName == widget.bankName && isWithinRange(e.date))
               .toList();
 
           if (entries.isEmpty) {
@@ -1477,7 +819,7 @@ class _BankDetailViewState extends ConsumerState<_BankDetailView> {
                           fontSize: 16, color: AppColors.textSecondary)),
                   const SizedBox(height: 4),
                   Text(
-                      _dateRange != null
+                      dateRange != null
                           ? 'Try adjusting the date filter'
                           : 'Add entries for ${widget.bankName}',
                       style: GoogleFonts.inter(
@@ -1556,8 +898,8 @@ class _BankDetailViewState extends ConsumerState<_BankDetailView> {
 
                             await PdfService.generateAndPrintPdf(
                               title: '${widget.bankName} – Bank Ledger Report',
-                              subtitle: _dateRange != null
-                                  ? 'From: ${fmtDate.format(_dateRange!.start)} To: ${fmtDate.format(_dateRange!.end)}'
+                              subtitle: dateRange != null
+                                  ? 'From: ${fmtDate.format(dateRange!.start)} To: ${fmtDate.format(dateRange!.end)}'
                                   : 'All Time',
                               headers: [
                                 'Date',
@@ -1655,7 +997,7 @@ class _BankDetailViewState extends ConsumerState<_BankDetailView> {
               ),
 
               // ─── Date filter indicator ───
-              if (_dateRange != null)
+              if (dateRange != null)
                 Padding(
                   padding: const EdgeInsets.symmetric(horizontal: 24),
                   child: Container(
@@ -1673,7 +1015,7 @@ class _BankDetailViewState extends ConsumerState<_BankDetailView> {
                             color: AppColors.info, size: 16),
                         const SizedBox(width: 8),
                         Text(
-                          '${fmtDate.format(_dateRange!.start)} – ${fmtDate.format(_dateRange!.end)}',
+                          '${fmtDate.format(dateRange!.start)} – ${fmtDate.format(dateRange!.end)}',
                           style: GoogleFonts.inter(
                               fontSize: 12,
                               fontWeight: FontWeight.w500,
@@ -1681,7 +1023,7 @@ class _BankDetailViewState extends ConsumerState<_BankDetailView> {
                         ),
                         const Spacer(),
                         InkWell(
-                          onTap: _clearDateRange,
+                          onTap: clearDateRange,
                           child: const Icon(Icons.close_rounded,
                               color: AppColors.info, size: 16),
                         ),
@@ -1848,9 +1190,7 @@ class _BankDetailViewState extends ConsumerState<_BankDetailView> {
                                   ),
                                 ),
                                 InkWell(
-                                  onTap: () => ref
-                                      .read(ledgerProvider.notifier)
-                                      .deleteLedgerEntry(entry.id!),
+                                  onTap: () => _confirmDeleteLedgerEntry(entry),
                                   borderRadius: BorderRadius.circular(8),
                                   child: Padding(
                                     padding: const EdgeInsets.all(8),

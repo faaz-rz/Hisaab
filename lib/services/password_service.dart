@@ -1,3 +1,5 @@
+import 'dart:convert';
+import 'package:crypto/crypto.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 /// Manages user-created passwords for protected sections (Bank Ledger, Sales).
@@ -9,6 +11,38 @@ class PasswordService {
   // SharedPreferences keys
   static const String _ledgerPasswordKey = 'ledger_password';
   static const String _salesPasswordKey = 'sales_password';
+  static const String _hashPrefix = 'sha256:';
+
+  String _hashPassword(String password) {
+    final digest = sha256.convert(utf8.encode(password));
+    return '$_hashPrefix$digest';
+  }
+
+  bool _isHashed(String storedPassword) {
+    return storedPassword.startsWith(_hashPrefix);
+  }
+
+  Future<void> _setPassword(String key, String password) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString(key, _hashPassword(password));
+  }
+
+  Future<bool> _verifyPassword(String key, String input) async {
+    final prefs = await SharedPreferences.getInstance();
+    final stored = prefs.getString(key);
+    if (stored == null || stored.isEmpty) return false;
+
+    if (_isHashed(stored)) {
+      return stored == _hashPassword(input);
+    }
+
+    if (stored == input) {
+      await prefs.setString(key, _hashPassword(input));
+      return true;
+    }
+
+    return false;
+  }
 
   // ─── Check if a password has been set ─────────────────────────
 
@@ -27,39 +61,35 @@ class PasswordService {
   // ─── Create a new password (first-time setup) ─────────────────
 
   Future<void> setLedgerPassword(String password) async {
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setString(_ledgerPasswordKey, password);
+    await _setPassword(_ledgerPasswordKey, password);
   }
 
   Future<void> setSalesPassword(String password) async {
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setString(_salesPasswordKey, password);
+    await _setPassword(_salesPasswordKey, password);
   }
 
   // ─── Verify a password ────────────────────────────────────────
 
   Future<bool> verifyLedgerPassword(String input) async {
-    final prefs = await SharedPreferences.getInstance();
-    final stored = prefs.getString(_ledgerPasswordKey);
-    return stored != null && stored == input;
+    return _verifyPassword(_ledgerPasswordKey, input);
   }
 
   Future<bool> verifySalesPassword(String input) async {
-    final prefs = await SharedPreferences.getInstance();
-    final stored = prefs.getString(_salesPasswordKey);
-    return stored != null && stored == input;
+    return _verifyPassword(_salesPasswordKey, input);
   }
 
   // ─── Change password (requires old password) ──────────────────
 
-  Future<bool> changeLedgerPassword(String oldPassword, String newPassword) async {
+  Future<bool> changeLedgerPassword(
+      String oldPassword, String newPassword) async {
     final isValid = await verifyLedgerPassword(oldPassword);
     if (!isValid) return false;
     await setLedgerPassword(newPassword);
     return true;
   }
 
-  Future<bool> changeSalesPassword(String oldPassword, String newPassword) async {
+  Future<bool> changeSalesPassword(
+      String oldPassword, String newPassword) async {
     final isValid = await verifySalesPassword(oldPassword);
     if (!isValid) return false;
     await setSalesPassword(newPassword);

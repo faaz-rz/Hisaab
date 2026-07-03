@@ -1,6 +1,7 @@
 import 'dart:io';
 import 'package:path_provider/path_provider.dart';
 import 'package:open_filex/open_filex.dart';
+import 'package:path/path.dart' as p;
 import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
 import 'package:printing/printing.dart';
@@ -44,11 +45,12 @@ class PdfService {
     );
 
     final bytes = await pdf.save();
-    
+
     final directory = await getApplicationDocumentsDirectory();
-    final filename = '${title.replaceAll(' ', '_').toLowerCase()}_${DateFormat('yyyyMMdd_HHmmss').format(DateTime.now())}.pdf';
-    final file = File('${directory.path}/$filename');
-    
+    final filename =
+        '${title.replaceAll(' ', '_').toLowerCase()}_${DateFormat('yyyyMMdd_HHmmss').format(DateTime.now())}.pdf';
+    final file = File(p.join(directory.path, filename));
+
     await file.writeAsBytes(bytes);
     await OpenFilex.open(file.path);
   }
@@ -59,7 +61,10 @@ class PdfService {
       children: [
         pw.Text(
           title,
-          style: pw.TextStyle(fontSize: 24, fontWeight: pw.FontWeight.bold, color: PdfColors.blue900),
+          style: pw.TextStyle(
+              fontSize: 24,
+              fontWeight: pw.FontWeight.bold,
+              color: PdfColors.blue900),
         ),
         if (subtitle != null) ...[
           pw.SizedBox(height: 4),
@@ -78,12 +83,15 @@ class PdfService {
       headers: headers,
       data: data,
       border: pw.TableBorder.all(color: PdfColors.grey300, width: 0.5),
-      headerStyle: pw.TextStyle(fontWeight: pw.FontWeight.bold, color: PdfColors.white),
+      headerStyle:
+          pw.TextStyle(fontWeight: pw.FontWeight.bold, color: PdfColors.white),
       headerDecoration: const pw.BoxDecoration(color: PdfColors.blue800),
       cellHeight: 30,
       cellAlignments: {
         for (var i = 0; i < headers.length; i++)
-          i: i == headers.length - 1 ? pw.Alignment.centerRight : pw.Alignment.centerLeft,
+          i: i == headers.length - 1
+              ? pw.Alignment.centerRight
+              : pw.Alignment.centerLeft,
       },
       cellPadding: const pw.EdgeInsets.all(8),
       oddRowDecoration: const pw.BoxDecoration(color: PdfColors.grey100),
@@ -101,7 +109,10 @@ class PdfService {
         pw.SizedBox(width: 10),
         pw.Text(
           amount,
-          style: pw.TextStyle(fontSize: 16, fontWeight: pw.FontWeight.bold, color: PdfColors.green700),
+          style: pw.TextStyle(
+              fontSize: 16,
+              fontWeight: pw.FontWeight.bold,
+              color: PdfColors.green700),
         ),
       ],
     );

@@ -6,8 +6,10 @@ import '../models/expense.dart';
 import '../models/expense_category.dart';
 import '../providers/expense_provider.dart';
 import '../widgets/add_expense_dialog.dart';
+import '../widgets/confirm_delete_dialog.dart';
+import '../mixins/date_filter_mixin.dart';
+import '../services/csv_export_service.dart';
 import '../services/pdf_service.dart';
-import '../widgets/month_year_picker.dart';
 import '../main.dart';
 
 class _CategoryExpenseSummary {
@@ -29,84 +31,93 @@ class ExpensesScreen extends ConsumerStatefulWidget {
   ConsumerState<ExpensesScreen> createState() => _ExpensesScreenState();
 }
 
-class _ExpensesScreenState extends ConsumerState<ExpensesScreen> {
-  DateTimeRange? _dateRange;
+class _ExpensesScreenState extends ConsumerState<ExpensesScreen>
+    with DateFilterMixin<ExpensesScreen> {
+  final _searchCtrl = TextEditingController();
+  String _searchQuery = '';
 
-  void _pickDateRange() async {
-    final range = await showDateRangePicker(
-      context: context,
-      firstDate: DateTime(2020),
-      lastDate: DateTime.now(),
-      initialDateRange: _dateRange,
-    );
-    if (range != null) {
-      setState(() {
-        _dateRange = range;
-      });
+  @override
+  void dispose() {
+    _searchCtrl.dispose();
+    super.dispose();
+  }
+
+  ExpenseCategory? _categoryFor(
+    int categoryId,
+    List<ExpenseCategory> categories,
+  ) {
+    for (final category in categories) {
+      if (category.id == categoryId) return category;
     }
-  }
-
-  void _clearDateRange() {
-    setState(() {
-      _dateRange = null;
-    });
-  }
-
-  void _pickMonth() async {
-    final date = await showMonthYearPicker(context, onlyYear: false);
-    if (date != null) {
-      final start = DateTime(date.year, date.month, 1);
-      final end = DateTime(date.year, date.month + 1, 0);
-      setState(() {
-        _dateRange = DateTimeRange(start: start, end: end);
-      });
-    }
-  }
-
-  void _pickYear() async {
-    final date = await showMonthYearPicker(context, onlyYear: true);
-    if (date != null) {
-      final start = DateTime(date.year, 1, 1);
-      final end = DateTime(date.year, 12, 31);
-      setState(() {
-        _dateRange = DateTimeRange(start: start, end: end);
-      });
-    }
-  }
-
-  void _setPresetDateRange(String preset) {
-    final now = DateTime.now();
-    DateTime start;
-    DateTime end = now;
-
-    if (preset == 'week') {
-      start = now.subtract(Duration(days: now.weekday - 1));
-    } else if (preset == 'month') {
-      start = DateTime(now.year, now.month, 1);
-    } else if (preset == 'year') {
-      start = DateTime(now.year, 1, 1);
-    } else {
-      _clearDateRange();
-      return;
-    }
-
-    setState(() {
-      _dateRange = DateTimeRange(start: start, end: end);
-    });
-  }
-
-  bool _isWithinRange(String dateStr) {
-    if (_dateRange == null) return true;
-    final date = DateTime.parse(dateStr);
-    return date.isAfter(_dateRange!.start.subtract(const Duration(days: 1))) &&
-        date.isBefore(_dateRange!.end.add(const Duration(days: 1)));
+    return null;
   }
 
   String _categoryNameFor(int categoryId, List<ExpenseCategory> categories) {
-    for (final category in categories) {
-      if (category.id == categoryId) return category.name;
-    }
+    final category = _categoryFor(categoryId, categories);
+    if (category != null) return category.name;
     return 'Unknown';
+  }
+
+  bool _matchesSearch(Expense expense, List<ExpenseCategory> categories) {
+    final query = _searchQuery.trim().toLowerCase();
+    if (query.isEmpty) return true;
+
+    final category = _categoryNameFor(expense.categoryId, categories);
+    final payment = expense.paymentMethod == null
+        ? ''
+        : expense.paymentMethod == 'other'
+            ? 'other'
+            : 'cash';
+    final fields = [
+      category,
+      expense.subcategory,
+      expense.item,
+      expense.note,
+      expense.staffName,
+      payment,
+      expense.amount.toStringAsFixed(0),
+      expense.date,
+    ];
+
+    return fields
+        .whereType<String>()
+        .any((value) => value.toLowerCase().contains(query));
+  }
+
+  List<List<String>> _expenseExportData({
+    required List<Expense> expenses,
+    required List<ExpenseCategory> categories,
+    required NumberFormat fmt,
+    required DateFormat fmtDate,
+  }) {
+    return expenses.map<List<String>>((e) {
+      final category = _categoryFor(e.categoryId, categories);
+      return <String>[
+        fmtDate.format(DateTime.parse(e.date)),
+        category?.name ?? 'Unknown',
+        e.subcategory ?? '-',
+        e.item ?? '-',
+        e.paymentMethod == null
+            ? '-'
+            : e.paymentMethod == 'other'
+                ? 'Other'
+                : 'Cash',
+        e.note ?? '-',
+        fmt.format(e.amount),
+      ];
+    }).toList();
+  }
+
+  Future<void> _confirmDeleteExpense(
+      Expense expense, String categoryName) async {
+    final confirmed = await confirmDeleteDialog(
+      context,
+      title: 'Delete Expense',
+      message: 'This expense will be permanently removed.',
+      details: '$categoryName • ₹${expense.amount.toStringAsFixed(0)}',
+    );
+    if (!confirmed || !mounted || expense.id == null) return;
+    await ref.read(expensesProvider.notifier).deleteExpense(expense.id!);
   }
 
   List<_CategoryExpenseSummary> _buildCategorySummaries(
@@ -139,25 +150,7 @@ class _ExpensesScreenState extends ConsumerState<ExpensesScreen> {
   }
 
   String _periodLabel(DateFormat fmtDate) {
-    if (_dateRange == null) return 'Up to date';
-
-    final start = _dateRange!.start;
-    final end = _dateRange!.end;
-    final monthEnd = DateTime(start.year, start.month + 1, 0);
-    final isFullMonth = start.day == 1 &&
-        start.year == end.year &&
-        start.month == end.month &&
-        end.day == monthEnd.day;
-    if (isFullMonth) return DateFormat('MMMM yyyy').format(start);
-
-    final isFullYear = start.month == 1 &&
-        start.day == 1 &&
-        end.year == start.year &&
-        end.month == 12 &&
-        end.day == 31;
-    if (isFullYear) return start.year.toString();
-
-    return '${fmtDate.format(start)} - ${fmtDate.format(end)}';
+    return periodLabel(fmtDate, allLabel: 'Up to date');
   }
 
   void _showCategoryBillsSheet(
@@ -407,44 +400,24 @@ class _ExpensesScreenState extends ConsumerState<ExpensesScreen> {
           PopupMenuButton<String>(
             icon: const Icon(Icons.tune_rounded),
             tooltip: 'Filter Expenses',
-            onSelected: (value) {
-              if (value == 'custom') {
-                _pickDateRange();
-              } else if (value == 'pick_month') {
-                _pickMonth();
-              } else if (value == 'pick_year') {
-                _pickYear();
-              } else {
-                _setPresetDateRange(value);
-              }
-            },
-            itemBuilder: (context) => [
-              const PopupMenuItem(value: 'all', child: Text('Up to Date')),
-              const PopupMenuDivider(),
-              const PopupMenuItem(value: 'week', child: Text('This Week')),
-              const PopupMenuItem(value: 'month', child: Text('This Month')),
-              const PopupMenuItem(value: 'year', child: Text('This Year')),
-              const PopupMenuDivider(),
-              const PopupMenuItem(
-                  value: 'pick_month', child: Text('Select Month...')),
-              const PopupMenuItem(
-                  value: 'pick_year', child: Text('Select Year...')),
-              const PopupMenuItem(
-                  value: 'custom', child: Text('Custom Date Range...')),
-            ],
+            onSelected: handleDateFilterSelection,
+            itemBuilder: (context) => buildFilterMenu(allLabel: 'Up to Date'),
           ),
-          if (_dateRange != null)
+          if (dateRange != null)
             IconButton(
               icon: const Icon(Icons.clear_rounded),
-              onPressed: _clearDateRange,
+              onPressed: clearDateRange,
               tooltip: 'Clear Filter',
             ),
         ],
       ),
       body: expensesAsync.when(
         data: (allExpenses) {
-          final expenses =
-              allExpenses.where((e) => _isWithinRange(e.date)).toList();
+          final categories = categoriesAsync.valueOrNull ?? [];
+          final expenses = allExpenses
+              .where((e) => isWithinRange(e.date))
+              .where((e) => _matchesSearch(e, categories))
+              .toList();
           if (allExpenses.isEmpty) {
             return Center(
               child: Column(
@@ -487,82 +460,166 @@ class _ExpensesScreenState extends ConsumerState<ExpensesScreen> {
                 child: Row(
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
-                    Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text('Total Expenses',
-                            style: GoogleFonts.inter(
-                                fontSize: 13,
-                                color: Colors.white70,
-                                fontWeight: FontWeight.w500)),
-                        const SizedBox(height: 4),
-                        Text(fmt.format(totalExpenses),
-                            style: GoogleFonts.inter(
-                                fontSize: 24,
-                                fontWeight: FontWeight.w800,
-                                color: Colors.white)),
-                        const SizedBox(height: 2),
-                        Text(_periodLabel(fmtDate),
-                            style: GoogleFonts.inter(
-                                fontSize: 12,
-                                color: Colors.white70,
-                                fontWeight: FontWeight.w500)),
-                      ],
-                    ),
-                    ElevatedButton.icon(
-                      onPressed: () async {
-                        final catsAsyncValue =
-                            ref.read(allExpenseCategoriesProvider);
-                        final cats = catsAsyncValue.valueOrNull ?? [];
-
-                        final List<List<String>> data =
-                            expenses.map<List<String>>((e) {
-                          final cat = cats.cast().firstWhere(
-                              (element) => element.id == e.categoryId,
-                              orElse: () => null);
-                          return <String>[
-                            fmtDate.format(DateTime.parse(e.date)),
-                            cat?.name ?? 'Unknown',
-                            e.subcategory ?? '-',
-                            e.item ?? '-',
-                            e.paymentMethod == null
-                                ? '-'
-                                : e.paymentMethod == 'other'
-                                    ? 'Other'
-                                    : 'Cash',
-                            e.note ?? '-',
-                            fmt.format(e.amount)
-                          ];
-                        }).toList();
-
-                        await PdfService.generateAndPrintPdf(
-                          title: 'Expenses Report',
-                          subtitle: _dateRange != null
-                              ? 'From: ${fmtDate.format(_dateRange!.start)} To: ${fmtDate.format(_dateRange!.end)}'
-                              : 'Up to date',
-                          headers: [
-                            'Date',
-                            'Category',
-                            'Class',
-                            'Item',
-                            'Payment',
-                            'Comments',
-                            'Amount'
-                          ],
-                          data: data,
-                          totalAmountLabel: 'Total Expenses:',
-                          totalAmount: fmt.format(totalExpenses),
-                        );
-                      },
-                      icon: const Icon(Icons.picture_as_pdf_rounded, size: 18),
-                      label: const Text('PDF'),
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: Colors.white.withOpacity(0.2),
-                        foregroundColor: Colors.white,
-                        elevation: 0,
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text('Total Expenses',
+                              style: GoogleFonts.inter(
+                                  fontSize: 13,
+                                  color: Colors.white70,
+                                  fontWeight: FontWeight.w500)),
+                          const SizedBox(height: 4),
+                          Text(fmt.format(totalExpenses),
+                              style: GoogleFonts.inter(
+                                  fontSize: 24,
+                                  fontWeight: FontWeight.w800,
+                                  color: Colors.white)),
+                          const SizedBox(height: 2),
+                          Text(_periodLabel(fmtDate),
+                              style: GoogleFonts.inter(
+                                  fontSize: 12,
+                                  color: Colors.white70,
+                                  fontWeight: FontWeight.w500)),
+                        ],
                       ),
                     ),
+                    const SizedBox(width: 12),
+                    Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        ElevatedButton.icon(
+                          onPressed: () async {
+                            final catsAsyncValue =
+                                ref.read(allExpenseCategoriesProvider);
+                            final cats = catsAsyncValue.valueOrNull ?? [];
+                            final data = _expenseExportData(
+                              expenses: expenses,
+                              categories: cats,
+                              fmt: fmt,
+                              fmtDate: fmtDate,
+                            );
+
+                            await PdfService.generateAndPrintPdf(
+                              title: 'Expenses Report',
+                              subtitle: dateRange != null
+                                  ? 'From: ${fmtDate.format(dateRange!.start)} To: ${fmtDate.format(dateRange!.end)}'
+                                  : 'Up to date',
+                              headers: [
+                                'Date',
+                                'Category',
+                                'Class',
+                                'Item',
+                                'Payment',
+                                'Comments',
+                                'Amount'
+                              ],
+                              data: data,
+                              totalAmountLabel: 'Total Expenses:',
+                              totalAmount: fmt.format(totalExpenses),
+                            );
+                          },
+                          icon: const Icon(Icons.picture_as_pdf_rounded,
+                              size: 18),
+                          label: const Text('PDF'),
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: Colors.white.withOpacity(0.2),
+                            foregroundColor: Colors.white,
+                            elevation: 0,
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        ElevatedButton.icon(
+                          onPressed: () async {
+                            final catsAsyncValue =
+                                ref.read(allExpenseCategoriesProvider);
+                            final cats = catsAsyncValue.valueOrNull ?? [];
+                            final data = _expenseExportData(
+                              expenses: expenses,
+                              categories: cats,
+                              fmt: fmt,
+                              fmtDate: fmtDate,
+                            );
+
+                            await CsvExportService.generateAndOpenCsv(
+                              title: 'Expenses Report',
+                              subtitle: dateRange != null
+                                  ? 'From: ${fmtDate.format(dateRange!.start)} To: ${fmtDate.format(dateRange!.end)}'
+                                  : 'Up to date',
+                              headers: [
+                                'Date',
+                                'Category',
+                                'Class',
+                                'Item',
+                                'Payment',
+                                'Comments',
+                                'Amount'
+                              ],
+                              data: data,
+                              totalAmountLabel: 'Total Expenses:',
+                              totalAmount: fmt.format(totalExpenses),
+                            );
+                          },
+                          icon: const Icon(Icons.table_view_rounded, size: 18),
+                          label: const Text('CSV'),
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: Colors.white.withOpacity(0.2),
+                            foregroundColor: Colors.white,
+                            elevation: 0,
+                          ),
+                        ),
+                      ],
+                    ),
                   ],
+                ),
+              ),
+              Padding(
+                padding: const EdgeInsets.fromLTRB(20, 0, 20, 12),
+                child: TextField(
+                  controller: _searchCtrl,
+                  onChanged: (value) => setState(() => _searchQuery = value),
+                  decoration: InputDecoration(
+                    hintText: 'Search category, item, comments, or staff...',
+                    hintStyle: GoogleFonts.inter(
+                      fontSize: 13,
+                      color: AppColors.textSecondary,
+                    ),
+                    prefixIcon: const Icon(
+                      Icons.search_rounded,
+                      color: AppColors.textSecondary,
+                      size: 20,
+                    ),
+                    suffixIcon: _searchQuery.isNotEmpty
+                        ? IconButton(
+                            icon: const Icon(Icons.clear_rounded, size: 18),
+                            onPressed: () {
+                              _searchCtrl.clear();
+                              setState(() => _searchQuery = '');
+                            },
+                          )
+                        : null,
+                    filled: true,
+                    fillColor: Colors.white,
+                    contentPadding: const EdgeInsets.symmetric(
+                      horizontal: 16,
+                      vertical: 12,
+                    ),
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(12),
+                      borderSide: const BorderSide(color: AppColors.divider),
+                    ),
+                    enabledBorder: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(12),
+                      borderSide: const BorderSide(color: AppColors.divider),
+                    ),
+                    focusedBorder: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(12),
+                      borderSide: const BorderSide(
+                        color: AppColors.accent,
+                        width: 1.5,
+                      ),
+                    ),
+                  ),
                 ),
               ),
               Expanded(
@@ -602,9 +659,7 @@ class _ExpensesScreenState extends ConsumerState<ExpensesScreen> {
                     final expense = expenses[index - 1];
                     return categoriesAsync.when(
                       data: (cats) {
-                        final cat = cats.cast().firstWhere(
-                            (element) => element.id == expense.categoryId,
-                            orElse: () => null);
+                        final cat = _categoryFor(expense.categoryId, cats);
                         return Container(
                           margin: const EdgeInsets.only(bottom: 12),
                           decoration: BoxDecoration(
@@ -750,9 +805,10 @@ class _ExpensesScreenState extends ConsumerState<ExpensesScreen> {
                                           ),
                                         ),
                                         InkWell(
-                                          onTap: () => ref
-                                              .read(expensesProvider.notifier)
-                                              .deleteExpense(expense.id!),
+                                          onTap: () => _confirmDeleteExpense(
+                                            expense,
+                                            cat?.name ?? 'Unknown',
+                                          ),
                                           borderRadius:
                                               BorderRadius.circular(8),
                                           child: Padding(

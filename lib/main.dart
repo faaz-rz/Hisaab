@@ -7,6 +7,7 @@ import 'app_router.dart';
 import 'services/database_service.dart';
 import 'services/agency_service.dart';
 import 'services/bank_service.dart';
+import 'services/cloud_sync_service.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -14,6 +15,9 @@ void main() async {
     sqfliteFfiInit();
     databaseFactory = databaseFactoryFfi;
   }
+
+  // Pull or publish the latest cloud copy before opening providers.
+  await CloudSyncService.instance.syncOnStartup();
 
   // Run background auto-backup if configured
   await DatabaseService.instance.runDailyAutoBackup();
@@ -25,6 +29,9 @@ void main() async {
   // Initialize bank registry & backfill from existing ledger
   await BankService.instance.ensureTable();
   await _backfillBanks();
+
+  // Backfills can create lookup rows, so publish them if cloud sync is enabled.
+  await CloudSyncService.instance.pushLocalIfEnabled();
 
   runApp(const ProviderScope(child: PharmacyApp()));
 }
@@ -42,7 +49,9 @@ Future<void> _backfillAgencies() async {
         row['agency_name'] as String,
       );
     }
-  } catch (_) {}
+  } catch (e) {
+    debugPrint('Backfill agency error: $e');
+  }
 }
 
 /// One-time backfill: scan existing bank_ledger for bank details
@@ -59,7 +68,9 @@ Future<void> _backfillBanks() async {
         accountNo: row['account_no'] as String?,
       );
     }
-  } catch (_) {}
+  } catch (e) {
+    debugPrint('Backfill bank error: $e');
+  }
 }
 
 // ─── Design Tokens ───────────────────────────────────────────
@@ -113,7 +124,7 @@ class PharmacyApp extends ConsumerWidget {
             color: Colors.white,
           ),
         ),
-        cardTheme: CardTheme(
+        cardTheme: CardThemeData(
           elevation: 0,
           color: AppColors.cardBg,
           shape: RoundedRectangleBorder(
@@ -180,7 +191,7 @@ class PharmacyApp extends ConsumerWidget {
           shape:
               RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
         ),
-        tabBarTheme: TabBarTheme(
+        tabBarTheme: TabBarThemeData(
           labelColor: Colors.white,
           unselectedLabelColor: Colors.white60,
           indicatorSize: TabBarIndicatorSize.tab,
@@ -198,7 +209,7 @@ class PharmacyApp extends ConsumerWidget {
           thickness: 1,
           space: 0,
         ),
-        dialogTheme: DialogTheme(
+        dialogTheme: DialogThemeData(
           shape:
               RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
           elevation: 8,

@@ -22,11 +22,12 @@ class DashboardScreen extends ConsumerWidget {
     final selectedDate = ref.watch(dashboardDateProvider);
     final overallRange = ref.watch(dashboardOverallRangeProvider);
     final fmt = NumberFormat.currency(symbol: '₹', decimalDigits: 0);
-    
-    final isToday = selectedDate.year == DateTime.now().year && 
-                    selectedDate.month == DateTime.now().month && 
-                    selectedDate.day == DateTime.now().day;
-    final dateLabel = isToday ? "Today" : DateFormat('MMM dd').format(selectedDate);
+
+    final isToday = selectedDate.year == DateTime.now().year &&
+        selectedDate.month == DateTime.now().month &&
+        selectedDate.day == DateTime.now().day;
+    final dateLabel =
+        isToday ? "Today" : DateFormat('MMM dd').format(selectedDate);
 
     return Scaffold(
       backgroundColor: AppColors.surface,
@@ -54,7 +55,8 @@ class DashboardScreen extends ConsumerWidget {
                         ),
                         const SizedBox(height: 4),
                         Text(
-                          DateFormat('EEEE, MMMM d, yyyy').format(DateTime.now()),
+                          DateFormat('EEEE, MMMM d, yyyy')
+                              .format(DateTime.now()),
                           style: GoogleFonts.inter(
                             fontSize: 14,
                             color: AppColors.textSecondary,
@@ -70,7 +72,9 @@ class DashboardScreen extends ConsumerWidget {
                           _ActionChip(
                             label: 'Today',
                             icon: Icons.restore,
-                            onTap: () => ref.read(dashboardDateProvider.notifier).state = DateTime.now(),
+                            onTap: () => ref
+                                .read(dashboardDateProvider.notifier)
+                                .state = DateTime.now(),
                           ),
                         const SizedBox(width: 8),
                         _ActionChip(
@@ -85,7 +89,8 @@ class DashboardScreen extends ConsumerWidget {
                               lastDate: DateTime.now(),
                             );
                             if (date != null) {
-                              ref.read(dashboardDateProvider.notifier).state = date;
+                              ref.read(dashboardDateProvider.notifier).state =
+                                  date;
                             }
                           },
                         ),
@@ -117,7 +122,15 @@ class DashboardScreen extends ConsumerWidget {
                         color: AppColors.warning,
                       ),
                     ),
-
+                    const SizedBox(width: 16),
+                    Expanded(
+                      child: _MetricTile(
+                        title: 'Expenses',
+                        value: fmt.format(metrics.dateExpenses),
+                        icon: Icons.receipt_long_rounded,
+                        color: AppColors.danger,
+                      ),
+                    ),
                   ],
                 ),
 
@@ -128,35 +141,52 @@ class DashboardScreen extends ConsumerWidget {
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
                     _SectionLabel(
-                      label: overallRange == null 
-                          ? 'Overall Totals' 
+                      label: overallRange == null
+                          ? 'Overall Totals'
                           : 'Totals — ${DateFormat('MMM yyyy').format(overallRange.start)}',
                     ),
                     PopupMenuButton<String>(
-                      icon: const Icon(Icons.tune_rounded, color: AppColors.textSecondary, size: 20),
+                      icon: const Icon(Icons.tune_rounded,
+                          color: AppColors.textSecondary, size: 20),
                       tooltip: 'Filter Totals',
                       onSelected: (value) async {
                         if (value == 'all') {
-                          ref.read(dashboardOverallRangeProvider.notifier).state = null;
+                          ref
+                              .read(dashboardOverallRangeProvider.notifier)
+                              .state = null;
                         } else if (value == 'month') {
-                          final date = await showMonthYearPicker(context, onlyYear: false);
+                          final date = await showMonthYearPicker(context,
+                              onlyYear: false);
                           if (date != null) {
-                            ref.read(dashboardOverallRangeProvider.notifier).state = 
-                                DateTimeRange(start: DateTime(date.year, date.month, 1), end: DateTime(date.year, date.month + 1, 0));
+                            ref
+                                    .read(dashboardOverallRangeProvider.notifier)
+                                    .state =
+                                DateTimeRange(
+                                    start: DateTime(date.year, date.month, 1),
+                                    end:
+                                        DateTime(date.year, date.month + 1, 0));
                           }
                         } else if (value == 'year') {
-                          final date = await showMonthYearPicker(context, onlyYear: true);
+                          final date = await showMonthYearPicker(context,
+                              onlyYear: true);
                           if (date != null) {
-                            ref.read(dashboardOverallRangeProvider.notifier).state = 
-                                DateTimeRange(start: DateTime(date.year, 1, 1), end: DateTime(date.year, 12, 31));
+                            ref
+                                    .read(dashboardOverallRangeProvider.notifier)
+                                    .state =
+                                DateTimeRange(
+                                    start: DateTime(date.year, 1, 1),
+                                    end: DateTime(date.year, 12, 31));
                           }
                         }
                       },
                       itemBuilder: (context) => [
-                        const PopupMenuItem(value: 'all', child: Text('All Time')),
+                        const PopupMenuItem(
+                            value: 'all', child: Text('All Time')),
                         const PopupMenuDivider(),
-                        const PopupMenuItem(value: 'month', child: Text('Select Month...')),
-                        const PopupMenuItem(value: 'year', child: Text('Select Year...')),
+                        const PopupMenuItem(
+                            value: 'month', child: Text('Select Month...')),
+                        const PopupMenuItem(
+                            value: 'year', child: Text('Select Year...')),
                       ],
                     ),
                   ],
@@ -188,6 +218,33 @@ class DashboardScreen extends ConsumerWidget {
                   children: [
                     Expanded(
                       child: _MetricTile(
+                        title: 'Total Expenses',
+                        value: fmt.format(metrics.totalExpenses),
+                        icon: Icons.receipt_long_rounded,
+                        color: AppColors.danger,
+                      ),
+                    ),
+                    const SizedBox(width: 16),
+                    Expanded(
+                      child: _MetricTile(
+                        title:
+                            metrics.netProfit >= 0 ? 'Net Profit' : 'Net Loss',
+                        value: fmt.format(metrics.netProfit.abs()),
+                        icon: metrics.netProfit >= 0
+                            ? Icons.trending_up_rounded
+                            : Icons.trending_down_rounded,
+                        color: metrics.netProfit >= 0
+                            ? AppColors.success
+                            : AppColors.danger,
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 16),
+                Row(
+                  children: [
+                    Expanded(
+                      child: _MetricTile(
                         title: 'Cash Purchases',
                         value: fmt.format(metrics.totalCashPurchases),
                         icon: Icons.payments_rounded,
@@ -208,6 +265,15 @@ class DashboardScreen extends ConsumerWidget {
                 const SizedBox(height: 16),
                 Row(
                   children: [
+                    Expanded(
+                      child: _MetricTile(
+                        title: 'Credit Outstanding',
+                        value: fmt.format(metrics.totalCreditOutstanding),
+                        icon: Icons.pending_actions_rounded,
+                        color: Colors.deepOrange,
+                      ),
+                    ),
+                    const SizedBox(width: 16),
                     Expanded(
                       child: _MetricTile(
                         title: 'Bank Balance',
@@ -353,7 +419,9 @@ class _ActionChip extends StatelessWidget {
           child: Row(
             mainAxisSize: MainAxisSize.min,
             children: [
-              Icon(icon, size: 16, color: isActive ? AppColors.accent : AppColors.textSecondary),
+              Icon(icon,
+                  size: 16,
+                  color: isActive ? AppColors.accent : AppColors.textSecondary),
               const SizedBox(width: 6),
               Text(
                 label,

@@ -2,6 +2,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../models/expense.dart';
 import '../models/expense_category.dart';
 import '../services/database_service.dart';
+import '../services/cloud_sync_service.dart';
 
 final expenseCategoriesProvider =
     FutureProvider<List<ExpenseCategory>>((ref) async {
@@ -42,6 +43,7 @@ class ExpenseNotifier extends StateNotifier<AsyncValue<List<Expense>>> {
   Future<void> addExpense(Expense expense) async {
     final db = await DatabaseService.instance.database;
     await db.insert('expenses', expense.toMap());
+    await CloudSyncService.instance.pushLocalIfEnabled();
     await loadExpenses();
   }
 
@@ -49,12 +51,14 @@ class ExpenseNotifier extends StateNotifier<AsyncValue<List<Expense>>> {
     final db = await DatabaseService.instance.database;
     await db.update('expenses', expense.toMap(),
         where: 'id = ?', whereArgs: [expense.id]);
+    await CloudSyncService.instance.pushLocalIfEnabled();
     await loadExpenses();
   }
 
   Future<void> deleteExpense(int id) async {
     final db = await DatabaseService.instance.database;
     await db.delete('expenses', where: 'id = ?', whereArgs: [id]);
+    await CloudSyncService.instance.pushLocalIfEnabled();
     await loadExpenses();
   }
 }
@@ -135,6 +139,7 @@ class CategoryRepository {
         where: 'id = ?',
         whereArgs: [existingRow['id']],
       );
+      await CloudSyncService.instance.pushLocalIfEnabled();
       existingRow['is_active'] = 1;
       return ExpenseCategory.fromMap(existingRow);
     }
@@ -144,6 +149,7 @@ class CategoryRepository {
       isActive: true,
     );
     final id = await db.insert('expense_categories', cat.toMap());
+    await CloudSyncService.instance.pushLocalIfEnabled();
     return ExpenseCategory(id: id, name: normalizedName, isActive: true);
   }
 
@@ -157,6 +163,7 @@ class CategoryRepository {
 
     if (usageCount == 0) {
       await db.delete('expense_categories', where: 'id = ?', whereArgs: [id]);
+      await CloudSyncService.instance.pushLocalIfEnabled();
       return CategoryDeleteResult.deleted;
     }
 
@@ -166,6 +173,7 @@ class CategoryRepository {
       where: 'id = ?',
       whereArgs: [id],
     );
+    await CloudSyncService.instance.pushLocalIfEnabled();
     return CategoryDeleteResult.hidden;
   }
 }
