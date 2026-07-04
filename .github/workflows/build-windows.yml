@@ -17,6 +17,37 @@ jobs:
       - run: flutter pub get
       - run: flutter build windows --release
 
+      - name: Verify release bundle
+        shell: pwsh
+        run: |
+          $release = "build/windows/x64/runner/Release"
+          $exe = Join-Path $release "pharmacy_management.exe"
+          $data = Join-Path $release "data"
+
+          if (!(Test-Path $exe)) {
+            throw "Missing Windows executable: $exe"
+          }
+
+          if (!(Test-Path $data)) {
+            throw "Missing Flutter data folder: $data"
+          }
+
+          Get-ChildItem $release | Format-Table Name, Length
+
+      - name: Smoke launch Windows app
+        shell: pwsh
+        run: |
+          $exe = Resolve-Path "build/windows/x64/runner/Release/pharmacy_management.exe"
+          $process = Start-Process -FilePath $exe -PassThru
+          Start-Sleep -Seconds 10
+
+          if ($process.HasExited) {
+            throw "Windows app exited during smoke launch with code $($process.ExitCode)"
+          }
+
+          Stop-Process -Id $process.Id -Force
+          Write-Host "Windows smoke launch passed."
+
       - uses: actions/upload-artifact@v4
         with:
           name: Hisaab-Windows
