@@ -1,4 +1,3 @@
-import 'package:flutter/foundation.dart';
 import 'database_service.dart';
 
 /// Manages the agency registry — each agency_code maps to exactly one agency_name.
@@ -17,7 +16,6 @@ class AgencyService {
         name TEXT NOT NULL
       )
     ''');
-    debugPrint('AgencyService: agencies table ensured.');
   }
 
   /// Look up agency name by code. Returns null if not found.
@@ -44,11 +42,14 @@ class AgencyService {
     final normalizedCode = code.trim().toUpperCase();
     final normalizedName = name.trim();
 
-    final existing = await db.query('agencies', where: 'code = ?', whereArgs: [normalizedCode]);
+    final existing = await db
+        .query('agencies', where: 'code = ?', whereArgs: [normalizedCode]);
     if (existing.isEmpty) {
-      await db.insert('agencies', {'code': normalizedCode, 'name': normalizedName});
+      await db
+          .insert('agencies', {'code': normalizedCode, 'name': normalizedName});
     } else {
-      await db.update('agencies', {'name': normalizedName}, where: 'code = ?', whereArgs: [normalizedCode]);
+      await db.update('agencies', {'name': normalizedName},
+          where: 'code = ?', whereArgs: [normalizedCode]);
     }
   }
 

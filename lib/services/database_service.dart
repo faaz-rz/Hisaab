@@ -1,5 +1,5 @@
 import 'dart:io';
-import 'package:sqflite/sqflite.dart';
+import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 import 'package:path/path.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -10,6 +10,7 @@ class DatabaseService {
   static final DatabaseService instance = DatabaseService._init();
   static const databaseFileName = 'pharmacy_management_v7.db';
   static Database? _database;
+  static bool _ffiInitialized = false;
 
   DatabaseService._init();
 
@@ -52,11 +53,7 @@ class DatabaseService {
     await dbDirectory.create(recursive: true);
     final path = join(dbDirectory.path, filePath);
 
-    final db = await openDatabase(
-      path,
-      version: 1,
-      onCreate: _createDB,
-    );
+    final db = await _openDatabase(path);
 
     // Run safe migrations for new columns
     await _migrateDB(db);
@@ -64,47 +61,75 @@ class DatabaseService {
     return db;
   }
 
+  Future<Database> _openDatabase(String path) async {
+    final options = OpenDatabaseOptions(
+      version: 1,
+      onCreate: _createDB,
+    );
+
+    if (!kIsWeb &&
+        (Platform.isWindows || Platform.isLinux || Platform.isMacOS)) {
+      if (!_ffiInitialized) {
+        sqfliteFfiInit();
+        _ffiInitialized = true;
+      }
+      return databaseFactoryFfi.openDatabase(path, options: options);
+    }
+
+    return openDatabase(path, version: 1, onCreate: _createDB);
+  }
+
   /// Safely add new columns that may not exist in older databases.
-  /// ALTER TABLE ADD COLUMN is a no-op if the column already exists (we catch the error).
   Future<void> _migrateDB(Database db) async {
-    try {
-      await db.execute(
-          'ALTER TABLE transactions ADD COLUMN paid_amount REAL DEFAULT 0');
-      debugPrint('Migration: added paid_amount column to transactions');
-    } catch (e) {
-      debugPrint('Migration skipped (expected): $e');
-    }
-    try {
-      await db
-          .execute('ALTER TABLE transactions ADD COLUMN payment_method TEXT');
-      debugPrint('Migration: added payment_method column to transactions');
-    } catch (e) {
-      debugPrint('Migration skipped (expected): $e');
-    }
-    try {
-      await db.execute('ALTER TABLE transactions ADD COLUMN receipt_no TEXT');
-      debugPrint('Migration: added receipt_no column to transactions');
-    } catch (e) {
-      debugPrint('Migration skipped (expected): $e');
-    }
-    try {
-      await db.execute('ALTER TABLE expenses ADD COLUMN subcategory TEXT');
-      debugPrint('Migration: added subcategory column to expenses');
-    } catch (e) {
-      debugPrint('Migration skipped (expected): $e');
-    }
-    try {
-      await db.execute('ALTER TABLE expenses ADD COLUMN item TEXT');
-      debugPrint('Migration: added item column to expenses');
-    } catch (e) {
-      debugPrint('Migration skipped (expected): $e');
-    }
-    try {
-      await db.execute('ALTER TABLE expenses ADD COLUMN payment_method TEXT');
-      debugPrint('Migration: added expense payment_method column');
-    } catch (e) {
-      debugPrint('Migration skipped (expected): $e');
-    }
+    await _addColumnIfMissing(
+      db,
+      table: 'transactions',
+      column: 'paid_amount',
+      definition: 'REAL DEFAULT 0',
+    );
+    await _addColumnIfMissing(
+      db,
+      table: 'transactions',
+      column: 'payment_method',
+      definition: 'TEXT',
+    );
+    await _addColumnIfMissing(
+      db,
+      table: 'transactions',
+      column: 'receipt_no',
+      definition: 'TEXT',
+    );
+    await _addColumnIfMissing(
+      db,
+      table: 'expenses',
+      column: 'subcategory',
+      definition: 'TEXT',
+    );
+    await _addColumnIfMissing(
+      db,
+      table: 'expenses',
+      column: 'item',
+      definition: 'TEXT',
+    );
+    await _addColumnIfMissing(
+      db,
+      table: 'expenses',
+      column: 'payment_method',
+      definition: 'TEXT',
+    );
+  }
+
+  Future<void> _addColumnIfMissing(
+    Database db, {
+    required String table,
+    required String column,
+    required String definition,
+  }) async {
+    final columns = await db.rawQuery('PRAGMA table_info($table)');
+    final exists = columns.any((row) => row['name'] == column);
+    if (exists) return;
+
+    await db.execute('ALTER TABLE $table ADD COLUMN $column $definition');
   }
 
   Future<void> _createDB(Database db, int version) async {

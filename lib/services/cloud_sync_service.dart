@@ -59,10 +59,7 @@ class CloudSyncService {
 
   Future<void> syncOnStartup() async {
     try {
-      final result = await syncNow(needsRestartOnDownload: false);
-      if (result.isSuccess) {
-        debugPrint('Cloud sync startup: ${result.message}');
-      }
+      await syncNow(needsRestartOnDownload: false);
     } catch (e) {
       debugPrint('Cloud sync startup failed: $e');
     }

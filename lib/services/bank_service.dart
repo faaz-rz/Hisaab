@@ -1,4 +1,3 @@
-import 'package:flutter/foundation.dart';
 import 'package:sqflite/sqflite.dart';
 import 'database_service.dart';
 
@@ -32,7 +31,6 @@ class BankService {
     await db.execute(
       'CREATE INDEX IF NOT EXISTS idx_banks_code ON banks(bank_code)',
     );
-    debugPrint('BankService: banks table ensured.');
   }
 
   Future<void> _createBanksTable(DatabaseExecutor db) async {
