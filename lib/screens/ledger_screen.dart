@@ -31,8 +31,8 @@ class _LedgerScreenState extends ConsumerState<LedgerScreen> {
     if (!_authenticated) {
       return PasswordAuthGate(
         title: 'Bank Ledger',
-        createMessage: 'Create a password to protect your financial data',
-        verifyMessage: 'Enter password to access sensitive financial data',
+        createMessage: 'Create one shared ledger password for all profiles',
+        verifyMessage: 'This bank ledger and its password are shared by all profiles',
         icon: Icons.shield_rounded,
         isPasswordSet: PasswordService.instance.isLedgerPasswordSet,
         setPassword: PasswordService.instance.setLedgerPassword,
@@ -164,7 +164,7 @@ class _LedgerDashboardState extends ConsumerState<_LedgerDashboard> {
     return Scaffold(
       backgroundColor: AppColors.surface,
       appBar: AppBar(
-        title: const Text('Bank Ledger'),
+        title: const Text('Bank Ledger · Shared'),
         actions: [
           IconButton(
             icon: const Icon(Icons.lock_reset_rounded),

@@ -29,13 +29,18 @@ void main() {
     await tester.pumpWidget(const ProfileGate());
     await tester.pumpAndSettle();
     expect(find.text('Set up your existing profile'), findsOneWidget);
-    expect(
-        find.textContaining('Your transactions, expenses and ledger will stay'),
+    expect(find.textContaining('Your transactions and expenses stay'),
         findsOneWidget);
     await tester.tap(find.text('Create profile'));
     await tester.pumpAndSettle();
     expect(find.text('Enter a name'), findsOneWidget);
-    expect(find.text('Use at least 8 characters'), findsOneWidget);
+    expect(find.text('Password or PIN'), findsNothing);
+    await tester.tap(find.byType(Switch));
+    await tester.pumpAndSettle();
+    await tester.ensureVisible(find.text('Create profile'));
+    await tester.tap(find.text('Create profile'));
+    await tester.pumpAndSettle();
+    expect(find.text('Use at least 4 characters'), findsOneWidget);
   });
 
   testWidgets(
@@ -54,7 +59,8 @@ void main() {
     await tester.runAsync(() async {
       await accounts.load();
       first = await accounts.create('Original business', 'first-password');
-      second = await accounts.create('Second business', 'second-password');
+      second =
+          await accounts.create('Second business', '', passwordRequired: false);
     });
     await tester.binding.setSurfaceSize(const Size(1200, 900));
     addTearDown(() async {
@@ -65,6 +71,9 @@ void main() {
       await tester.binding.setSurfaceSize(null);
     });
     await tester.pumpWidget(const ProfileGate());
+    await tester.pumpAndSettle();
+    expect(find.text('Who’s keeping the books?'), findsOneWidget);
+    await tester.tap(find.text('Original business'));
     await tester.pumpAndSettle();
     expect(find.text('Sign in'), findsOneWidget);
     expect(find.text('Dashboard'), findsNothing);
@@ -87,9 +96,15 @@ void main() {
     expect(find.text('Add profile'), findsOneWidget);
     await tester.runAsync(() => session.signOut());
     await tester.pumpAndSettle();
-    expect(find.text('Sign in'), findsOneWidget);
+    expect(find.text('Who’s keeping the books?'), findsOneWidget);
     expect(find.text('Signed in as Original business'), findsNothing);
-    await tester.runAsync(() => session.signIn(second, 'second-password'));
+    await tester.runAsync(() async {
+      await tester.tap(find.text('Second business'));
+      for (var i = 0; i < 50 && session.current == null; i++) {
+        await Future<void>.delayed(const Duration(milliseconds: 100));
+      }
+    });
+    expect(session.current?.id, second.id);
     await tester.runAsync(() async {
       await tester.pump();
       await Future<void>.delayed(const Duration(milliseconds: 200));

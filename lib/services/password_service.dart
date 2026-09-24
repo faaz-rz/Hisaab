@@ -10,7 +10,8 @@ class PasswordService {
   PasswordService._();
 
   // SharedPreferences keys
-  static String get _ledgerPasswordKey => ProfileScope.key('ledger_password');
+  // Retain the original client's ledger password, shared just like its records.
+  static const String _ledgerPasswordKey = 'ledger_password';
   static String get _salesPasswordKey => ProfileScope.key('sales_password');
   static const String _hashPrefix = 'sha256:';
 

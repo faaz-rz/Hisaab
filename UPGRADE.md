@@ -1,37 +1,52 @@
-# HISAAB 1.1 — separate profiles
+# HISAAB 1.2 — profiles with a common bank ledger
 
-## Updating the client's Windows installation
+## Safe Windows update
 
-1. In the old app, use **Backup & Sync → Export Backup** and keep the resulting `.db` file.
-2. Close HISAAB. Keep a copy of the old release folder.
-3. Extract the complete new Windows release to a separate application folder. Keep `HISAAB.exe`, its DLLs and the `data` folder together. Use the same Windows account as before.
-4. Open the new `HISAAB.exe`. Choose a name and password for the **first profile**. This profile automatically uses the existing business records.
-5. Sign in and check the transactions, expenses, ledger, and totals before entering new data.
-6. Click the profile name near the bottom of the sidebar (or the Profiles icon on a narrow screen), then **Add profile**. Give the second profile its own name and password.
-7. Use **Sign out / Switch profile**, choose the second profile and sign in. It starts with empty records and the same features.
+1. Export a backup from the old app for each profile that has records. Keep the old release folder too.
+2. Close every HISAAB window. Extract the complete new ZIP into a new application folder; keep HISAAB.exe, all DLLs and the data folder together.
+3. Run HISAAB.exe using the same Windows account as before. Do not uninstall, clear application settings, or delete Documents/PharmacyManagement.
+4. Existing profile names and passwords continue to work. If upgrading directly from the original single-user app, create the first profile; its private records stay in the original database.
+5. On first sign-in, existing bank-ledger rows and bank-account details from all local profile databases are copied into one shared ledger. Original private database files and pre-migration recovery copies are retained. Compare balances and counts before entering new data.
+6. Use the profile name/photo in the sidebar → Edit to add/change/remove a photo or choose whether to require a login password. Existing protected profiles require their current password before changing or removing protection.
 
-Do not delete the client's Documents/PharmacyManagement folder or clear HISAAB's application settings during the update. No uninstall is required. Replacing the executable alone is insufficient: distribute the whole release folder.
+## What is shared, and what stays private
 
-## Data compatibility
+- **Shared:** bank ledger, bank-account registry, and the original first profile's Bank Ledger section password. Additions, edits and deletions are visible from every profile. The Bank Ledger screen is labelled Shared.
+- **Private:** sales, purchases, credit payments, returns, expenses, agency lists, reports based on private transactions, Sales section password, and each profile's backup-folder settings.
+- The existing Bank Ledger section password is separate from the optional profile login password. When already configured, use the original first profile's ledger password from either profile.
+- Existing ledger entries are not silently deduplicated during migration; identical records from different profiles are preserved. Review any historical duplicates yourself. New duplicate entries still trigger the confirmation warning across the common ledger.
 
-- The first profile retains `Documents/PharmacyManagement/pharmacy_management_v7.db`. The actual Documents folder follows Windows configuration, including a redirected Documents folder.
-- Additional profiles use `pharmacy_profile_<stable-id>.db` in the same folder. Renaming a profile does not change its ID or move its records.
-- The database version remains 1. Existing business tables and IDs remain intact. An additive `hisaab_profile` metadata table identifies backup ownership.
-- Before the first upgraded login opens/migrates/syncs an existing database, a consistent recovery copy is created alongside it: `<database-name>.before_multi_user_v1.db`. This copy is not overwritten on subsequent launches.
-- Existing Sales/Bank Ledger passwords and backup settings remain with the first profile. Additional profiles have independent settings and section passwords.
-- No existing duplicate entries are removed. New or edited entries with matching details show a warning. Users can go back or explicitly save a genuine repeated entry.
-- Dates are compared by displayed calendar day; text matching ignores ASCII case and surrounding spaces. Different amounts, accounts or other details are not treated as identical.
+## Login and photos
 
-## Backup behavior
+The start screen shows profile cards. Select a card to sign in. Password-free profiles open immediately; protected profiles show a password prompt. New passwords/PINs require at least 4 characters, so a 4-digit PIN works. Longer passwords are stronger. Anyone with access to this Windows session can open a password-free profile.
 
-Each profile has independent backup/cloud settings and distinct backup filenames, even if both select the same OneDrive folder. A backup tagged with another profile's ID is rejected. Older untagged backups can be restored into the first profile. A recovery copy is retained before a valid restore replaces current data. Corrupt or invalid backups are rejected before replacement.
+Photos are optional. Choose a PNG, JPEG or WebP under 5 MB. A square thumbnail is saved with local profile settings, so moving the original photo does not break it. Initials are shown when no photo is selected. Photos and profile passwords are local, not uploaded as part of database backups. Keep passwords safe; there is no email-based recovery.
 
-Database exports contain business records, not the profile login registry or local settings. Keep HISAAB's application settings as well as database files if moving to a new Windows account/computer. This release's profile management is designed for the same Windows installation; new-computer account recovery is not provided by a database-only restore.
+## Backups and restore
 
-These are local app logins with salted PBKDF2 password hashes. The SQLite files themselves are not encrypted. Keep passwords safely; there is no email-based password recovery.
+Full profile exports, configured daily backups and cloud-folder uploads include that profile's private records plus a snapshot of the shared ledger. They do not include another profile's private transactions.
 
-## Release verification
+**Restoring/downloading a profile restores only its private records. It does not overwrite the shared bank ledger.** This prevents an older backup from one profile from undoing the other's recent ledger changes.
 
-Run `flutter test` and `flutter analyze --no-fatal-infos --no-fatal-warnings`. The Windows GitHub Actions workflow pins Flutter 3.47.1, runs tests, builds the release, bundles the SQLite DLL from the pinned sqflite_common_ffi package, checks for `HISAAB.exe`, and performs a basic process launch check. For a manual Windows build, run `dart run tooling/bundle_windows_sqlite.dart` after `flutter build windows --release`. A Windows launch check alone does not exercise every feature.
+To restore the common ledger, use **Backup & Sync → Restore shared ledger**. Select either a standalone ledger export or a full HISAAB profile backup. Confirm that the operation affects every profile. A recovery copy is created first. Restart after restoring to refresh all screens. Use **Export shared ledger** to export only the common bank records, without private transactions.
 
-Before sending the Windows ZIP, test a copy of the client's exported database in a separate Windows test account: upgrade, compare record counts and totals, create/switch profiles, test duplicate warning/cancel/confirm, and export/restore each profile. Never use the client's only live database for testing.
+Cloud-folder copies are backups of the shared ledger; ledger changes are shared live on this computer, not automatically downloaded/merged across computers. Restore a ledger snapshot explicitly when recovering it. This release is designed for profiles on the same Windows installation.
+
+Database backups do not include the profile login registry or application settings. Keep those settings as well as all database files if moving to a new Windows account/computer. SQLite files are not encrypted; app login protection is not disk encryption.
+
+## Storage and recovery
+
+- Original private database: Documents/PharmacyManagement/pharmacy_management_v7.db (unchanged location).
+- Additional private databases: pharmacy_profile_<stable-id>.db in the same folder.
+- Common ledger: hisaab_shared_ledger_v1.db in that folder.
+- Before ledger migration: each source database gets a .before_shared_ledger_v1.db recovery copy. Migration markers prevent repeated imports.
+- Before restoring: a timestamped .before_restore_<timestamp>.db recovery copy is kept.
+- Existing business tables, balances and IDs in private source files remain intact. Renaming a profile never changes its storage ID.
+
+Do not switch back to an older app for normal work after upgrading: older versions do not know about the common ledger and would show stale private ledger copies.
+
+## Test on your Windows laptop
+
+Use test data or a copy of the client's export, never the only live database. Check profile selection, 4-digit PIN and no-password sign-in, photo persistence after restart, shared ledger add/edit/delete from both profiles, private records remaining separate, duplicate warnings, profile backup restore, and explicit shared-ledger restore. A fresh laptop has no client records until a backup is restored. When restoring onto a fresh test installation, restore the private profile and then explicitly restore its ledger snapshot.
+
+The Windows build workflow runs automated tests, compiles the release, includes the SQLite runtime, verifies the bundle and checks that HISAAB.exe stays running. This launch check is not a substitute for your hands-on Windows acceptance test.

@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import '../services/account_service.dart';
 import '../services/session_service.dart';
 import 'profile_form.dart';
+import '../widgets/profile_avatar.dart';
 
 class ProfilesScreen extends StatefulWidget {
   const ProfilesScreen({super.key});
@@ -38,15 +39,15 @@ class _ProfilesScreenState extends State<ProfilesScreen> {
             style: Theme.of(context).textTheme.titleLarge),
         const SizedBox(height: 8),
         const Text(
-            'Each profile has its own records, passwords and backup settings.'),
+            'Sales, purchases and expenses are separate. The bank ledger, bank accounts and ledger password are shared. Each profile chooses its own photo and optional login password.'),
         const SizedBox(height: 16),
         for (final profile in AccountService.instance.profiles)
           ListTile(
-              leading: const Icon(Icons.person_outline),
+              leading: ProfileAvatar(profile: profile, size: 44),
               title: Text(profile.name),
               subtitle: Text(profile.id == current?.id
-                  ? 'Current profile'
-                  : 'Sign out to open this profile'),
+                  ? 'Current profile · ${profile.passwordRequired ? 'Password protected' : 'No login password'}'
+                  : '${profile.passwordRequired ? 'Password protected' : 'No login password'} · Switch profile to open'),
               trailing: profile.id == current?.id
                   ? TextButton(
                       onPressed: () => _showForm(existing: profile),

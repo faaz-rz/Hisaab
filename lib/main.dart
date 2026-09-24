@@ -19,6 +19,8 @@ void main() async {
 Future<void> initializeProfile() async {
   // Preserve the installed client's records before opening or syncing them.
   await DatabaseService.instance.prepareUpgradeBackup();
+  // Import all existing profiles' ledger rows once, before cloud/profile restores.
+  await DatabaseService.instance.ledgerDatabase;
 
   // Pull or publish the latest cloud copy before opening providers.
   await CloudSyncService.instance.syncOnStartup();
@@ -36,7 +38,6 @@ Future<void> initializeProfile() async {
 
   // Backfills can create lookup rows, so publish them if cloud sync is enabled.
   await CloudSyncService.instance.pushLocalIfEnabled();
-
 }
 
 /// One-time backfill: scan existing transactions for agency_code+agency_name
@@ -61,7 +62,7 @@ Future<void> _backfillAgencies() async {
 /// and populate the banks table so old data is covered.
 Future<void> _backfillBanks() async {
   try {
-    final db = await DatabaseService.instance.database;
+    final db = await DatabaseService.instance.ledgerDatabase;
     final rows = await db.rawQuery(
         "SELECT DISTINCT bank_name, bank_code, account_no FROM bank_ledger WHERE bank_name IS NOT NULL AND bank_name != ''");
     for (final row in rows) {
@@ -104,6 +105,14 @@ class PharmacyApp extends ConsumerWidget {
     return MaterialApp.router(
       title: 'HISAAB',
       debugShowCheckedModeBanner: false,
+      builder: (context, child) => TweenAnimationBuilder<double>(
+        tween: Tween(begin: 0, end: 1),
+        duration: MediaQuery.disableAnimationsOf(context)
+            ? Duration.zero
+            : const Duration(milliseconds: 240),
+        builder: (context, opacity, _) =>
+            Opacity(opacity: opacity, child: child),
+      ),
       theme: ThemeData(
         useMaterial3: true,
         brightness: Brightness.light,

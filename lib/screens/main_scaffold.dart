@@ -4,6 +4,7 @@ import 'package:google_fonts/google_fonts.dart';
 import '../main.dart';
 import '../widgets/hisaab_logo.dart';
 import '../services/session_service.dart';
+import '../widgets/profile_avatar.dart';
 
 class MainScaffold extends StatelessWidget {
   final Widget child;
@@ -18,9 +19,14 @@ class MainScaffold extends StatelessWidget {
       builder: (context, constraints) {
         if (constraints.maxWidth < 600) {
           return Scaffold(
-            appBar: AppBar(title: Text(SessionService.instance.current?.name ?? 'HISAAB'),
-              actions: [IconButton(tooltip: 'Profiles', icon: const Icon(Icons.manage_accounts),
-                  onPressed: () => context.push('/profiles'))]),
+            appBar: AppBar(
+                title: Text(SessionService.instance.current?.name ?? 'HISAAB'),
+                actions: [
+                  IconButton(
+                      tooltip: 'Profiles',
+                      icon: const Icon(Icons.manage_accounts),
+                      onPressed: () => context.push('/profiles'))
+                ]),
             body: child,
             bottomNavigationBar: _BottomNav(
               selectedIndex: selectedIndex,
@@ -131,13 +137,31 @@ class MainScaffold extends StatelessWidget {
             onTap: () => context.go('/reports'),
           ),
           const Spacer(),
-          _NavItem(
-            icon: Icons.manage_accounts,
-            label: SessionService.instance.current?.name ?? 'Profiles',
-            isSelected: false,
-            collapsed: collapsed,
-            onTap: () => context.push('/profiles'),
-          ),
+          if (SessionService.instance.current case final profile?)
+            Tooltip(
+                message: 'Manage ${profile.name}',
+                child: InkWell(
+                  onTap: () => context.push('/profiles'),
+                  child: Padding(
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 16, vertical: 14),
+                      child: Row(
+                          mainAxisAlignment: collapsed
+                              ? MainAxisAlignment.center
+                              : MainAxisAlignment.start,
+                          children: [
+                            ProfileAvatar(profile: profile, size: 36),
+                            if (!collapsed) ...[
+                              const SizedBox(width: 12),
+                              Expanded(
+                                  child: Text(profile.name,
+                                      maxLines: 2,
+                                      overflow: TextOverflow.ellipsis,
+                                      style:
+                                          const TextStyle(color: Colors.white)))
+                            ],
+                          ])),
+                )),
           Divider(color: Colors.white.withOpacity(0.1), height: 1),
           _NavItem(
             icon: Icons.cloud_sync_rounded,

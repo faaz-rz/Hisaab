@@ -356,6 +356,65 @@ class _BackupScreenState extends State<BackupScreen> {
 
   String _csvValue(Object? value) => value?.toString() ?? '';
 
+  Future<void> _sharedLedgerBackup(bool restore) async {
+    setState(() => _isProcessing = true);
+    try {
+      if (restore) {
+        final picked = await FilePicker.pickFiles(
+            dialogTitle: 'Select a HISAAB ledger or profile backup',
+            type: FileType.custom,
+            allowedExtensions: ['db']);
+        final path = picked?.files.single.path;
+        if (path == null || !mounted) return;
+        final confirmed = await showDialog<bool>(
+            context: context,
+            builder: (ctx) => AlertDialog(
+                  title: const Text('Restore ledger for ALL profiles?'),
+                  content: const Text(
+                      'This replaces the common bank ledger and bank accounts for every profile. Private sales, purchases and expenses stay unchanged. A recovery copy is saved first. Continue?'),
+                  actions: [
+                    TextButton(
+                        onPressed: () => Navigator.pop(ctx, false),
+                        child: const Text('Cancel')),
+                    FilledButton(
+                        onPressed: () => Navigator.pop(ctx, true),
+                        child: const Text('Restore shared ledger'))
+                  ],
+                ));
+        if (confirmed != true) return;
+        await DatabaseService.instance.restoreSharedLedger(path);
+        if (mounted) {
+          await showDialog<void>(
+              context: context,
+              barrierDismissible: false,
+              builder: (ctx) => AlertDialog(
+                    title: const Text('Shared ledger restored'),
+                    content: const Text(
+                        'Restart HISAAB to refresh the ledger in all screens.'),
+                    actions: [
+                      FilledButton(
+                          onPressed: () => exit(0),
+                          child: const Text('Close Application'))
+                    ],
+                  ));
+        }
+      } else {
+        final folder = await FilePicker.getDirectoryPath(
+            dialogTitle: 'Save shared bank ledger');
+        if (folder == null) return;
+        final path = p.join(folder,
+            'hisaab_shared_ledger_${DateFormat('yyyy-MM-dd_HHmmss').format(DateTime.now())}.db');
+        await DatabaseService.instance.exportSharedLedger(path);
+        _showSnack('Shared ledger backup saved to $path', AppColors.success);
+      }
+    } catch (error) {
+      _showSnack('Could not complete the ledger backup operation: $error',
+          AppColors.danger);
+    } finally {
+      if (mounted) setState(() => _isProcessing = false);
+    }
+  }
+
   Future<void> _exportCsvSnapshot() async {
     setState(() => _isProcessing = true);
     try {
@@ -396,7 +455,9 @@ class _BackupScreenState extends State<BackupScreen> {
         ]);
       }
 
-      final ledgerEntries = await db.query('bank_ledger', orderBy: 'date DESC');
+      final ledger = await DatabaseService.instance.ledgerDatabase;
+      final ledgerEntries =
+          await ledger.query('bank_ledger', orderBy: 'date DESC');
       for (final entry in ledgerEntries) {
         rows.add([
           'Bank Ledger',
@@ -487,8 +548,10 @@ class _BackupScreenState extends State<BackupScreen> {
           builder: (ctx) => AlertDialog(
             title: const Text('Confirm Restore'),
             content: const Text(
-                'WARNING: Restoring a backup will OVERWRITE your current database entirely. '
-                'Any changes made since this backup was created will be permanently lost.\n\n'
+                'This replaces this profile’s private records with the backup. '
+                'Other profiles and the shared bank ledger are not changed. '
+                'To restore the bank ledger, use Restore shared ledger separately. '
+                'A recovery copy of the current records will be kept.\n\n'
                 'Are you sure you want to proceed?'),
             actions: [
               TextButton(
@@ -563,6 +626,38 @@ class _BackupScreenState extends State<BackupScreen> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
+                    Card(
+                        child: Padding(
+                            padding: const EdgeInsets.all(20),
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text('Shared bank ledger',
+                                    style:
+                                        Theme.of(context).textTheme.titleLarge),
+                                const SizedBox(height: 8),
+                                const Text(
+                                    'The bank ledger is common to all profiles on this computer. Profile exports, daily backups and cloud uploads include a snapshot of it. Restoring or downloading a profile does not overwrite the shared ledger; restore it explicitly here if needed.'),
+                                const SizedBox(height: 12),
+                                Wrap(spacing: 12, runSpacing: 8, children: [
+                                  OutlinedButton.icon(
+                                      onPressed: _isProcessing
+                                          ? null
+                                          : () => _sharedLedgerBackup(false),
+                                      icon: const Icon(Icons.download),
+                                      label:
+                                          const Text('Export shared ledger')),
+                                  OutlinedButton.icon(
+                                      onPressed: _isProcessing
+                                          ? null
+                                          : () => _sharedLedgerBackup(true),
+                                      icon: const Icon(Icons.restore),
+                                      label:
+                                          const Text('Restore shared ledger')),
+                                ]),
+                              ],
+                            ))),
+                    const SizedBox(height: 20),
                     // ─── Header ───
                     Center(
                       child: Container(

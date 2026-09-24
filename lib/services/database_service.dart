@@ -16,6 +16,8 @@ class DatabaseService {
       : 'pharmacy_profile_$_profileId.db';
   Database? _database;
   Future<Database>? _opening;
+  Database? _ledgerDatabase;
+  Future<Database>? _ledgerOpening;
   final String? _documentsPath;
   static bool _ffiInitialized = false;
 
@@ -118,10 +120,15 @@ class DatabaseService {
     }
   }
 
-  Future<Database> _openDatabase(String path, {bool readOnly = false}) async {
+  Future<Database> _openDatabase(String path,
+      {bool readOnly = false, bool shared = false}) async {
     final options = OpenDatabaseOptions(
       version: readOnly ? null : 1,
-      onCreate: readOnly ? null : _createDB,
+      onCreate: readOnly
+          ? null
+          : shared
+              ? _createSharedLedger
+              : _createDB,
       readOnly: readOnly,
       singleInstance: !readOnly,
     );
@@ -137,9 +144,208 @@ class DatabaseService {
 
     return openDatabase(path,
         version: readOnly ? null : 1,
-        onCreate: readOnly ? null : _createDB,
+        onCreate: readOnly
+            ? null
+            : shared
+                ? _createSharedLedger
+                : _createDB,
         readOnly: readOnly,
         singleInstance: !readOnly);
+  }
+
+  /// One ledger for every local profile. Private databases remain in place.
+  Future<Database> get ledgerDatabase async {
+    if (_ledgerDatabase != null) return _ledgerDatabase!;
+    if (_ledgerOpening != null) return _ledgerOpening!;
+    _ledgerOpening = _initSharedLedger();
+    try {
+      return _ledgerDatabase = await _ledgerOpening!;
+    } finally {
+      _ledgerOpening = null;
+    }
+  }
+
+  Future<void> _createSharedLedger(Database db, int version) async {
+    await db.execute('''CREATE TABLE bank_ledger (
+      id INTEGER PRIMARY KEY AUTOINCREMENT, type TEXT NOT NULL,
+      bank_name TEXT NOT NULL, bank_code TEXT, account_no TEXT,
+      amount REAL NOT NULL, date TEXT NOT NULL, purpose TEXT)''');
+    await db.execute('''CREATE TABLE banks (
+      id INTEGER PRIMARY KEY AUTOINCREMENT, bank_name TEXT NOT NULL,
+      bank_code TEXT, account_no TEXT, UNIQUE(bank_name, account_no))''');
+    await db.execute('CREATE TABLE ledger_sources (filename TEXT PRIMARY KEY)');
+    await db.execute(
+        'CREATE TABLE shared_ledger_identity (version INTEGER NOT NULL)');
+    await db.insert('shared_ledger_identity', {'version': 1});
+  }
+
+  Future<Database> _initSharedLedger() async {
+    final directory = Directory(dirname(await getDatabaseFilePath()));
+    final shared = await _openDatabase(
+        join(directory.path, 'hisaab_shared_ledger_v1.db'),
+        shared: true);
+    try {
+      final sources = await directory
+          .list()
+          .where((file) =>
+              file is File &&
+              (basename(file.path) == databaseFileName ||
+                  RegExp(r'^pharmacy_profile_[0-9a-f]{32}\.db$')
+                      .hasMatch(basename(file.path))))
+          .toList();
+      sources.sort((a, b) => basename(a.path) == databaseFileName
+          ? -1
+          : basename(b.path) == databaseFileName
+              ? 1
+              : a.path.compareTo(b.path));
+      for (final source in sources) {
+        final name = basename(source.path);
+        if ((await shared.query('ledger_sources',
+                where: 'filename = ?', whereArgs: [name]))
+            .isNotEmpty) {
+          continue;
+        }
+        final legacy = await _openDatabase(source.path, readOnly: true);
+        try {
+          final backup = File('${source.path}.before_shared_ledger_v1.db');
+          if (!await backup.exists()) {
+            await _snapshot(legacy, backup.path);
+          }
+          final snapshot = (await legacy.rawQuery(
+                  "SELECT name FROM sqlite_master WHERE name = 'hisaab_shared_snapshot'"))
+              .isNotEmpty;
+          // A profile backup contains a shared-ledger snapshot, not private
+          // ledger rows. It must never be automatically merged a second time.
+          final entries = snapshot
+              ? <Map<String, Object?>>[]
+              : await legacy.query('bank_ledger');
+          final hasBanks = (await legacy.rawQuery(
+                  "SELECT name FROM sqlite_master WHERE name = 'banks'"))
+              .isNotEmpty;
+          final banks = !snapshot && hasBanks
+              ? await legacy.query('banks')
+              : <Map<String, Object?>>[];
+          await shared.transaction((txn) async {
+            for (final entry in entries) {
+              final values = Map<String, Object?>.from(entry);
+              // Preserve primary IDs where possible; secondary IDs can collide.
+              if (name != databaseFileName ||
+                  (await txn.query('bank_ledger',
+                          where: 'id = ?', whereArgs: [values['id']]))
+                      .isNotEmpty) {
+                values.remove('id');
+              }
+              await txn.insert('bank_ledger', values);
+            }
+            for (final bank in [...banks, ...entries]) {
+              final bankName = bank['bank_name'];
+              if (bankName == null || bankName.toString().trim().isEmpty) {
+                continue;
+              }
+              final account = bank['account_no'];
+              if ((await txn.query('banks',
+                      where: "bank_name = ? AND COALESCE(account_no, '') = ?",
+                      whereArgs: [bankName, account ?? '']))
+                  .isEmpty) {
+                await txn.insert('banks', {
+                  'bank_name': bankName,
+                  'bank_code': bank['bank_code'],
+                  'account_no': account
+                });
+              }
+            }
+            await txn.insert('ledger_sources', {'filename': name});
+          });
+        } finally {
+          await legacy.close();
+        }
+      }
+      return shared;
+    } catch (_) {
+      await shared.close();
+      rethrow;
+    }
+  }
+
+  Future<void> _snapshot(Database db, String path) async {
+    final target = File(path);
+    await target.parent.create(recursive: true);
+    final temporary =
+        File('$path.${DateTime.now().microsecondsSinceEpoch}.tmp');
+    try {
+      await db.execute('VACUUM INTO ?', [temporary.path]);
+      await temporary.rename(path);
+    } finally {
+      if (await temporary.exists()) await temporary.delete();
+    }
+  }
+
+  Future<void> exportSharedLedger(String path) async {
+    final db = await ledgerDatabase;
+    if (equals(absolute(path), absolute(db.path))) {
+      throw ArgumentError('Choose another backup location.');
+    }
+    await _snapshot(db, path);
+  }
+
+  /// Explicit action only: restoring a profile/cloud copy never rewinds the
+  /// common ledger. Accepts standalone ledger backups and full profile backups.
+  Future<void> restoreSharedLedger(String path) async {
+    final db = await ledgerDatabase;
+    if (equals(absolute(path), absolute(db.path))) {
+      throw ArgumentError('Choose a backup file.');
+    }
+    final candidate = await _openDatabase(path, readOnly: true);
+    try {
+      final integrity = await candidate.rawQuery('PRAGMA integrity_check');
+      if (integrity.length != 1 || integrity.single.values.single != 'ok') {
+        throw StateError('The backup is damaged.');
+      }
+      final tables = (await candidate
+              .rawQuery("SELECT name FROM sqlite_master WHERE type = 'table'"))
+          .map((row) => row['name'])
+          .toSet();
+      if (!tables.contains('shared_ledger_identity') &&
+          !tables.contains('transactions')) {
+        throw StateError('Choose a HISAAB backup.');
+      }
+      final columns =
+          (await candidate.rawQuery('PRAGMA table_info(bank_ledger)'))
+              .map((row) => row['name'])
+              .toSet();
+      if (!columns.containsAll([
+        'id',
+        'type',
+        'bank_name',
+        'bank_code',
+        'account_no',
+        'amount',
+        'date',
+        'purpose'
+      ])) {
+        throw StateError('The backup has no valid bank ledger.');
+      }
+      final entries = await candidate.query('bank_ledger');
+      final banks = tables.contains('banks')
+          ? await candidate.query('banks')
+          : <Map<String, Object?>>[];
+      await _snapshot(db,
+          '${db.path}.before_restore_${DateTime.now().microsecondsSinceEpoch}.db');
+      await db.transaction((txn) async {
+        await txn.delete('bank_ledger');
+        await txn.delete('banks');
+        for (final row in entries) {
+          await txn.insert('bank_ledger', row);
+        }
+        for (final row in banks) {
+          await txn.insert('banks', row,
+              conflictAlgorithm: ConflictAlgorithm.ignore);
+        }
+        // Keep ledger_sources: original private databases must not be reimported.
+      });
+    } finally {
+      await candidate.close();
+    }
   }
 
   Future<void> _ensureProfileOwnership(DatabaseExecutor db) async {
@@ -294,10 +500,13 @@ CREATE TABLE bank_ledger (
   }
 
   Future<void> close() async {
+    if (_opening != null) await _opening;
+    if (_ledgerOpening != null) await _ledgerOpening;
     final db = _database;
-    if (db == null) return;
-    await db.close();
+    await db?.close();
     _database = null;
+    await _ledgerDatabase?.close();
+    _ledgerDatabase = null;
   }
 
   Future<void> copyDatabaseTo(String destinationPath) async {
@@ -317,6 +526,30 @@ CREATE TABLE bank_ledger (
       // Capture a consistent snapshot without closing a connection that the
       // dashboard or another form may still be using.
       await db.execute('VACUUM INTO ?', [temporary.path]);
+      final ledger = await ledgerDatabase;
+      final snapshot = await _openDatabase(temporary.path);
+      try {
+        final entries = await ledger.query('bank_ledger');
+        final banks = await ledger.query('banks');
+        await snapshot.transaction((txn) async {
+          await txn.delete('bank_ledger');
+          for (final row in entries) {
+            await txn.insert('bank_ledger', row);
+          }
+          await txn.execute('DROP TABLE IF EXISTS banks');
+          await txn.execute(
+              'CREATE TABLE banks (id INTEGER PRIMARY KEY, bank_name TEXT, bank_code TEXT, account_no TEXT)');
+          for (final row in banks) {
+            await txn.insert('banks', row);
+          }
+          await txn.execute(
+              'CREATE TABLE IF NOT EXISTS hisaab_shared_snapshot (version INTEGER)');
+          await txn.delete('hisaab_shared_snapshot');
+          await txn.insert('hisaab_shared_snapshot', {'version': 1});
+        });
+      } finally {
+        await snapshot.close();
+      }
       await temporary.rename(destinationPath);
     } finally {
       if (await temporary.exists()) await temporary.delete();

@@ -7,7 +7,13 @@ import 'package:shared_preferences/shared_preferences.dart';
 class LocalProfile {
   final String id;
   final String name;
-  const LocalProfile({required this.id, required this.name});
+  final bool passwordRequired;
+  final String? photoBase64;
+  const LocalProfile(
+      {required this.id,
+      required this.name,
+      this.passwordRequired = true,
+      this.photoBase64});
 }
 
 class AccountException implements Exception {
@@ -32,9 +38,13 @@ class AccountService {
   List<Map<String, dynamic>> _records = [];
   bool _loaded = false;
   bool _writing = false;
-  List<LocalProfile> get profiles =>
-      List.unmodifiable(_records.map((record) => LocalProfile(
-          id: record['id'] as String, name: record['name'] as String)));
+  List<LocalProfile> get profiles => List.unmodifiable(_records.map(_profile));
+
+  LocalProfile _profile(Map<String, dynamic> record) => LocalProfile(
+      id: record['id'] as String,
+      name: record['name'] as String,
+      passwordRequired: record['algorithm'] != 'none',
+      photoBase64: record['photo'] as String?);
 
   Future<void> load() async {
     final prefs = await SharedPreferences.getInstance();
@@ -52,9 +62,11 @@ class AccountService {
       for (final record in records) {
         if (record['id'] is! String ||
             record['name'] is! String ||
-            record['salt'] is! String ||
-            record['hash'] is! String ||
-            record['algorithm'] != 'pbkdf2-sha256-600000' ||
+            (record['algorithm'] != 'none' &&
+                (record['salt'] is! String ||
+                    record['hash'] is! String ||
+                    record['algorithm'] != 'pbkdf2-sha256-600000')) ||
+            (record['photo'] != null && record['photo'] is! String) ||
             !RegExp(r'^(primary|[0-9a-f]{32})$')
                 .hasMatch(record['id'] as String)) {
           throw const AccountException(
@@ -62,6 +74,8 @@ class AccountService {
         }
       }
       _records = records;
+    } else {
+      _records = [];
     }
     _loaded = true;
   }
@@ -85,9 +99,9 @@ class AccountService {
   }
 
   Future<Map<String, dynamic>> _credentials(String password) async {
-    if (password.length < 8) {
+    if (password.length < 4) {
       throw const AccountException(
-          'Use a password with at least 8 characters.');
+          'Use at least 4 characters. A 4-digit PIN is also accepted.');
     }
     final random = Random.secure();
     final salt = base64Encode(List.generate(16, (_) => random.nextInt(256)));
@@ -105,7 +119,8 @@ class AccountService {
     _records = records;
   }
 
-  Future<LocalProfile> create(String name, String password) async {
+  Future<LocalProfile> create(String name, String password,
+      {bool passwordRequired = true, String? photoBase64}) async {
     if (!_loaded) throw StateError('Load profiles first.');
     if (_writing) {
       throw const AccountException('A profile is being saved. Please wait.');
@@ -113,12 +128,22 @@ class AccountService {
     _writing = true;
     try {
       _validateName(name);
-      final credentials = await _credentials(password);
+      final credentials = passwordRequired
+          ? await _credentials(password)
+          : <String, dynamic>{'algorithm': 'none'};
       final profile = LocalProfile(
-          id: _records.isEmpty ? 'primary' : _randomId(), name: name.trim());
+          id: _records.isEmpty ? 'primary' : _randomId(),
+          name: name.trim(),
+          passwordRequired: passwordRequired,
+          photoBase64: photoBase64);
       await _persist([
         ..._records,
-        {'id': profile.id, 'name': profile.name, ...credentials}
+        {
+          'id': profile.id,
+          'name': profile.name,
+          'photo': photoBase64,
+          ...credentials
+        }
       ]);
       return profile;
     } finally {
@@ -130,6 +155,7 @@ class AccountService {
     final matches = _records.where((record) => record['id'] == id);
     if (matches.isEmpty) return false;
     final record = matches.single;
+    if (record['algorithm'] == 'none') return true;
     final hash = await compute(_derivePassword,
         {'password': password, 'salt': record['salt'] as String});
     final expected = base64Decode(record['hash'] as String);
@@ -142,8 +168,11 @@ class AccountService {
     return difference == 0;
   }
 
-  Future<LocalProfile> update(String id, String name, String currentPassword,
-      String? newPassword) async {
+  Future<LocalProfile> update(
+      String id, String name, String currentPassword, String? newPassword,
+      {bool? passwordRequired,
+      String? photoBase64,
+      bool removePhoto = false}) async {
     if (_writing) {
       throw const AccountException('A profile is being saved. Please wait.');
     }
@@ -153,15 +182,27 @@ class AccountService {
         throw const AccountException('Current password is incorrect.');
       }
       _validateName(name, excludingId: id);
-      final credentials = newPassword == null
-          ? <String, dynamic>{}
-          : await _credentials(newPassword);
+      final record = _records.singleWhere((record) => record['id'] == id);
+      final required = passwordRequired ?? record['algorithm'] != 'none';
+      if (required && record['algorithm'] == 'none' && newPassword == null) {
+        throw const AccountException('Enter a password to enable protection.');
+      }
+      final credentials = !required
+          ? <String, dynamic>{'algorithm': 'none', 'salt': null, 'hash': null}
+          : newPassword == null
+              ? <String, dynamic>{}
+              : await _credentials(newPassword);
       await _persist(_records
           .map((record) => record['id'] == id
-              ? {...record, 'name': name.trim(), ...credentials}
+              ? {
+                  ...record,
+                  'name': name.trim(),
+                  'photo': removePhoto ? null : photoBase64 ?? record['photo'],
+                  ...credentials
+                }
               : record)
           .toList());
-      return LocalProfile(id: id, name: name.trim());
+      return _profile(_records.singleWhere((record) => record['id'] == id));
     } finally {
       _writing = false;
     }

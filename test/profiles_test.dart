@@ -30,7 +30,7 @@ void main() {
     await expectLater(accounts.create(' client ', 'another-password'),
         throwsA(isA<AccountException>()));
     await expectLater(
-        accounts.create('Short', 'short'), throwsA(isA<AccountException>()));
+        accounts.create('Short', '123'), throwsA(isA<AccountException>()));
     await expectLater(
         accounts.update(second.id, 'Renamed', 'wrong-password', null),
         throwsA(isA<AccountException>()));
@@ -56,6 +56,41 @@ void main() {
         AccountService().load(), throwsA(isA<AccountException>()));
   });
 
+  test(
+      'optional passwords accept four digits and disabling requires current password',
+      () async {
+    final accounts = AccountService();
+    await accounts.load();
+    final first = await accounts.create('Open profile', '',
+        passwordRequired: false, photoBase64: 'photo-data');
+    expect(first.passwordRequired, false);
+    expect(await accounts.verify(first.id, ''), true);
+    await expectLater(
+        accounts.update(first.id, first.name, '', null, passwordRequired: true),
+        throwsA(isA<AccountException>()));
+    var updated = await accounts.update(first.id, first.name, '', '1234',
+        passwordRequired: true);
+    expect(updated.passwordRequired, true);
+    expect(updated.photoBase64, 'photo-data');
+    await expectLater(
+        accounts.update(first.id, first.name, 'wrong', null,
+            passwordRequired: false),
+        throwsA(isA<AccountException>()));
+    updated = await accounts.update(first.id, first.name, '1234', null,
+        passwordRequired: false, removePhoto: true);
+    expect(updated.passwordRequired, false);
+    expect(updated.photoBase64, isNull);
+    final restarted = AccountService();
+    await restarted.load();
+    expect(restarted.profiles.single.passwordRequired, false);
+    expect(await restarted.verify(first.id, ''), true);
+    final raw = (await SharedPreferences.getInstance())
+        .getString(AccountService.storageKey)!;
+    final record = (jsonDecode(raw) as List).single;
+    expect(record['hash'], isNull);
+    expect(record['salt'], isNull);
+  });
+
   test('legacy passwords and backup settings stay with primary profile',
       () async {
     SharedPreferences.setMockInitialValues({
@@ -67,7 +102,7 @@ void main() {
     expect(await PasswordService.instance.verifyLedgerPassword('1234'), true);
     final legacyName = CloudSyncService.cloudDatabaseFileName;
     ProfileScope.id = '0123456789abcdef0123456789abcdef';
-    expect(await PasswordService.instance.isLedgerPasswordSet(), false);
+    expect(await PasswordService.instance.isLedgerPasswordSet(), true);
     expect(await PasswordService.instance.isSalesPasswordSet(), false);
     final prefs = await SharedPreferences.getInstance();
     expect(prefs.getString(ProfileScope.key('auto_backup_path')), isNull);
@@ -76,8 +111,8 @@ void main() {
     await PasswordService.instance.setLedgerPassword('9999');
     expect(await PasswordService.instance.verifyLedgerPassword('9999'), true);
     ProfileScope.id = 'primary';
-    expect(await PasswordService.instance.verifyLedgerPassword('1234'), true);
-    expect(await PasswordService.instance.verifyLedgerPassword('9999'), false);
+    expect(await PasswordService.instance.verifyLedgerPassword('1234'), false);
+    expect(await PasswordService.instance.verifyLedgerPassword('9999'), true);
     expect(prefs.getString(ProfileScope.key('auto_backup_path')),
         'original-backups');
   });

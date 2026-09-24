@@ -9,7 +9,7 @@ class BankService {
 
   /// Ensure the banks table exists (called on app start).
   Future<void> ensureTable() async {
-    final db = await DatabaseService.instance.database;
+    final db = await DatabaseService.instance.ledgerDatabase;
     final existing = await db.rawQuery(
       "SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'banks'",
     );
@@ -68,7 +68,7 @@ class BankService {
   /// Get bank details by name. Returns null if not found.
   Future<Map<String, dynamic>?> getBankByName(String name) async {
     if (name.trim().isEmpty) return null;
-    final db = await DatabaseService.instance.database;
+    final db = await DatabaseService.instance.ledgerDatabase;
     final results = await db.query(
       'banks',
       where: 'bank_name = ?',
@@ -88,7 +88,7 @@ class BankService {
   /// Get bank details by code. Returns null if not found.
   Future<Map<String, dynamic>?> getBankByCode(String code) async {
     if (code.trim().isEmpty) return null;
-    final db = await DatabaseService.instance.database;
+    final db = await DatabaseService.instance.ledgerDatabase;
     final results = await db.query(
       'banks',
       where: 'bank_code = ?',
@@ -103,7 +103,7 @@ class BankService {
   Future<void> saveBank(String bankName,
       {String? bankCode, String? accountNo}) async {
     if (bankName.trim().isEmpty) return;
-    final db = await DatabaseService.instance.database;
+    final db = await DatabaseService.instance.ledgerDatabase;
     final normalizedName = bankName.trim();
     final normalizedCode = bankCode?.trim();
     final normalizedAccount = accountNo?.trim();
@@ -144,7 +144,7 @@ class BankService {
 
   /// Get all banks (for dropdowns).
   Future<List<Map<String, dynamic>>> getAllBanks() async {
-    final db = await DatabaseService.instance.database;
+    final db = await DatabaseService.instance.ledgerDatabase;
     return await db.rawQuery('''
       SELECT
         bank_name,
@@ -160,7 +160,7 @@ class BankService {
   /// Get all stored accounts for a selected bank.
   Future<List<Map<String, dynamic>>> getAccountsForBank(String bankName) async {
     if (bankName.trim().isEmpty) return [];
-    final db = await DatabaseService.instance.database;
+    final db = await DatabaseService.instance.ledgerDatabase;
     return await db.query(
       'banks',
       where: 'bank_name = ?',
