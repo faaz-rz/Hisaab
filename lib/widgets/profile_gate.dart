@@ -174,9 +174,9 @@ class _LoginScreenState extends State<_LoginScreen> {
                         const Row(
                             mainAxisAlignment: MainAxisAlignment.center,
                             children: [
-                              const HisaabLogo(size: 44),
-                              const SizedBox(width: 12),
-                              const Text('HISAAB',
+                              HisaabLogo(size: 44),
+                              SizedBox(width: 12),
+                              Text('HISAAB',
                                   style: TextStyle(
                                       color: Colors.white,
                                       fontSize: 22,
