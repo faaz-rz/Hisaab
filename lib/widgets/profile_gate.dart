@@ -6,6 +6,7 @@ import '../services/account_service.dart';
 import '../services/session_service.dart';
 import '../screens/profile_form.dart';
 import 'profile_avatar.dart';
+import 'hisaab_logo.dart';
 
 class ProfileGate extends StatefulWidget {
   const ProfileGate({super.key});
@@ -170,19 +171,10 @@ class _LoginScreenState extends State<_LoginScreen> {
                   child: Column(
                       mainAxisAlignment: MainAxisAlignment.spaceBetween,
                       children: [
-                        Row(
+                        const Row(
                             mainAxisAlignment: MainAxisAlignment.center,
                             children: [
-                              Container(
-                                  padding: const EdgeInsets.all(9),
-                                  decoration: BoxDecoration(
-                                      color: const Color(0xFF64D7C0)
-                                          .withValues(alpha: .12),
-                                      borderRadius: BorderRadius.circular(12)),
-                                  child: const Icon(
-                                      Icons.account_balance_wallet_outlined,
-                                      color: Color(0xFF8CE3D0),
-                                      size: 24)),
+                              const HisaabLogo(size: 44),
                               const SizedBox(width: 12),
                               const Text('HISAAB',
                                   style: TextStyle(

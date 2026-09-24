@@ -1,84 +1,67 @@
 import 'package:flutter/material.dart';
-import 'package:google_fonts/google_fonts.dart';
-import '../main.dart';
 
+/// The same vector mark is used in the UI and to generate the Windows icon.
 class HisaabLogo extends StatelessWidget {
   final double size;
-
   const HisaabLogo({super.key, this.size = 44});
 
   @override
-  Widget build(BuildContext context) {
-    return SizedBox.square(
-      dimension: size,
-      child: CustomPaint(
-        painter: _HisaabLogoPainter(),
-        child: Center(
-          child: Text(
-            'H',
-            style: GoogleFonts.inter(
-              color: Colors.white,
-              fontSize: size * 0.46,
-              fontWeight: FontWeight.w900,
-              height: 1,
-            ),
-          ),
+  Widget build(BuildContext context) => Semantics(
+        label: 'HISAAB logo',
+        image: true,
+        child: SizedBox.square(
+          dimension: size,
+          child: CustomPaint(painter: HisaabLogoPainter()),
         ),
-      ),
-    );
-  }
+      );
 }
 
-class _HisaabLogoPainter extends CustomPainter {
+class HisaabLogoPainter extends CustomPainter {
   @override
   void paint(Canvas canvas, Size size) {
-    final rect = Offset.zero & size;
-    final radius = Radius.circular(size.width * 0.24);
-    final bgPaint = Paint()
+    canvas.save();
+    canvas.scale(size.width / 100, size.height / 100);
+    const bounds = Rect.fromLTWH(0, 0, 100, 100);
+    final background = Paint()
       ..shader = const LinearGradient(
-        colors: [AppColors.accent, AppColors.accentLight],
+        colors: [Color(0xFF8B5CF6), Color(0xFF5B36C8), Color(0xFF31246F)],
         begin: Alignment.topLeft,
         end: Alignment.bottomRight,
-      ).createShader(rect);
+      ).createShader(bounds);
+    canvas.drawRRect(
+        RRect.fromRectAndRadius(bounds, const Radius.circular(23)), background);
 
-    canvas.drawRRect(RRect.fromRectAndRadius(rect, radius), bgPaint);
+    // Subtle inset rim gives the tile definition on both dark and light surfaces.
+    canvas.drawRRect(
+        RRect.fromRectAndRadius(
+            const Rect.fromLTWH(2, 2, 96, 96), const Radius.circular(21)),
+        Paint()
+          ..color = const Color(0x28FFFFFF)
+          ..style = PaintingStyle.stroke
+          ..strokeWidth = 1);
 
-    final pagePaint = Paint()
-      ..color = Colors.white.withOpacity(0.18)
-      ..style = PaintingStyle.stroke
-      ..strokeWidth = size.width * 0.055
-      ..strokeCap = StrokeCap.round;
+    final ivory = Paint()..color = const Color(0xFFFFFCF5);
+    canvas.drawRRect(
+        RRect.fromRectAndRadius(
+            const Rect.fromLTWH(24, 22, 13, 56), const Radius.circular(4)),
+        ivory);
+    canvas.drawRRect(
+        RRect.fromRectAndRadius(
+            const Rect.fromLTWH(63, 22, 13, 56), const Radius.circular(4)),
+        ivory);
+    canvas.drawRRect(
+        RRect.fromRectAndRadius(
+            const Rect.fromLTWH(33, 44, 34, 12), const Radius.circular(3)),
+        Paint()..color = const Color(0xFFFFD166));
 
-    final left = size.width * 0.23;
-    final top = size.height * 0.22;
-    final right = size.width * 0.77;
-    final bottom = size.height * 0.78;
-
-    final bookPath = Path()
-      ..moveTo(left, top)
-      ..lineTo(left, bottom)
-      ..quadraticBezierTo(size.width * 0.50, size.height * 0.66, right, bottom)
-      ..lineTo(right, top);
-    canvas.drawPath(bookPath, pagePaint);
-
-    final rupeePaint = Paint()
-      ..color = Colors.white.withOpacity(0.9)
-      ..style = PaintingStyle.stroke
-      ..strokeWidth = size.width * 0.045
-      ..strokeCap = StrokeCap.round;
-
-    canvas.drawLine(
-      Offset(size.width * 0.37, size.height * 0.32),
-      Offset(size.width * 0.65, size.height * 0.32),
-      rupeePaint,
-    );
-    canvas.drawLine(
-      Offset(size.width * 0.37, size.height * 0.43),
-      Offset(size.width * 0.60, size.height * 0.43),
-      rupeePaint,
-    );
+    // A small gold ledger tab is visible at larger sizes without cluttering 16px.
+    canvas.drawRRect(
+        RRect.fromRectAndRadius(
+            const Rect.fromLTWH(45, 66, 10, 5), const Radius.circular(2.5)),
+        Paint()..color = const Color(0xFFFFD166));
+    canvas.restore();
   }
 
   @override
-  bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
+  bool shouldRepaint(covariant HisaabLogoPainter oldDelegate) => false;
 }

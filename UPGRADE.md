@@ -1,4 +1,6 @@
-# HISAAB 1.2 — profiles with a common bank ledger
+# HISAAB 1.2.1 — new violet-and-gold logo
+
+This version has a distinct violet-and-gold H logo in the app and Windows executable. The app name and data locations are unchanged. Extract to a new folder and create a shortcut to the new HISAAB.exe if your old shortcut still shows the previous icon. All 1.2 profile and shared-ledger features remain included.
 
 ## Safe Windows update
 
