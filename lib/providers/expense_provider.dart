@@ -4,6 +4,7 @@ import '../models/expense_category.dart';
 import '../services/database_service.dart';
 import '../services/cloud_sync_service.dart';
 import '../services/entry_service.dart';
+import '../services/session_service.dart';
 
 final expenseCategoriesProvider =
     FutureProvider<List<ExpenseCategory>>((ref) async {
@@ -30,18 +31,20 @@ class ExpenseNotifier extends StateNotifier<AsyncValue<List<Expense>>> {
   }
 
   Future<void> loadExpenses() async {
+    if (!mounted) return;
     state = const AsyncValue.loading();
     try {
       final db = await DatabaseService.instance.database;
       final maps = await db.query('expenses', orderBy: 'date DESC');
       final expenses = maps.map((e) => Expense.fromMap(e)).toList();
-      state = AsyncValue.data(expenses);
+      if (mounted) state = AsyncValue.data(expenses);
     } catch (e, stack) {
-      state = AsyncValue.error(e, stack);
+      if (mounted) state = AsyncValue.error(e, stack);
     }
   }
 
-  Future<void> addExpense(Expense expense, {bool allowDuplicate = false}) async {
+  Future<void> addExpense(Expense expense,
+      {bool allowDuplicate = false}) async {
     final db = await DatabaseService.instance.database;
     await EntryService.save(db, 'expenses', expense.toMap(),
         allowDuplicate: allowDuplicate);
@@ -49,7 +52,8 @@ class ExpenseNotifier extends StateNotifier<AsyncValue<List<Expense>>> {
     await loadExpenses();
   }
 
-  Future<void> updateExpense(Expense expense, {bool allowDuplicate = false}) async {
+  Future<void> updateExpense(Expense expense,
+      {bool allowDuplicate = false}) async {
     final db = await DatabaseService.instance.database;
     await EntryService.save(db, 'expenses', expense.toMap(),
         allowDuplicate: allowDuplicate);
@@ -58,10 +62,12 @@ class ExpenseNotifier extends StateNotifier<AsyncValue<List<Expense>>> {
   }
 
   Future<void> deleteExpense(int id) async {
-    final db = await DatabaseService.instance.database;
-    await db.delete('expenses', where: 'id = ?', whereArgs: [id]);
-    await CloudSyncService.instance.pushLocalIfEnabled();
-    await loadExpenses();
+    await SessionService.instance.runMutation(() async {
+      final db = await DatabaseService.instance.database;
+      await db.delete('expenses', where: 'id = ?', whereArgs: [id]);
+      await CloudSyncService.instance.pushLocalIfEnabled();
+      await loadExpenses();
+    });
   }
 }
 

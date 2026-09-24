@@ -1,4 +1,5 @@
 import 'dart:io';
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:google_fonts/google_fonts.dart';
@@ -9,6 +10,9 @@ import 'package:pharmacy_management/services/account_service.dart';
 import 'package:pharmacy_management/services/database_service.dart';
 import 'package:pharmacy_management/services/session_service.dart';
 import 'package:pharmacy_management/widgets/profile_gate.dart';
+import 'package:pharmacy_management/providers/transaction_provider.dart';
+import 'package:pharmacy_management/providers/expense_provider.dart';
+import 'package:pharmacy_management/providers/ledger_provider.dart';
 
 class _TestPaths extends PathProviderPlatform {
   final String directory;
@@ -20,6 +24,36 @@ class _TestPaths extends PathProviderPlatform {
 }
 
 void main() {
+  test('switching waits for mutations and disposed providers ignore late loads',
+      () async {
+    final session = SessionService.instance;
+    final pending = Completer<void>();
+    final work = session.runMutation(() => pending.future);
+    await expectLater(session.signOut(), throwsA(isA<AccountException>()));
+    pending.complete();
+    await work;
+    expect(session.activeSaves, 0);
+    final original = PathProviderPlatform.instance;
+    final directory = await Directory.systemTemp.createTemp('hisaab-dispose-');
+    PathProviderPlatform.instance = _TestPaths(directory.path);
+    try {
+      // Sign-out may dispose the entire provider tree while a query is pending.
+      final transactions = TransactionNotifier();
+      final expenses = ExpenseNotifier();
+      final ledger = LedgerNotifier();
+      transactions.dispose();
+      expenses.dispose();
+      ledger.dispose();
+      await Future<void>.delayed(const Duration(milliseconds: 300));
+      await transactions.loadTransactions();
+      await expenses.loadExpenses();
+      await ledger.loadLedger();
+    } finally {
+      await DatabaseService.instance.close();
+      PathProviderPlatform.instance = original;
+      await directory.delete(recursive: true);
+    }
+  });
   testWidgets(
       'first launch explains legacy records and validates profile setup',
       (tester) async {

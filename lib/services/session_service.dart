@@ -10,12 +10,16 @@ class SessionService extends ChangeNotifier {
   late Future<void> Function() initializeProfile;
 
   Future<void> signIn(LocalProfile profile, String password) async {
-    if (!await AccountService.instance.verify(profile.id, password)) {
-      throw const AccountException('Incorrect password. Please try again.');
+    if (busy || current != null || activeSaves > 0) {
+      throw const AccountException(
+          'Please wait for the current operation to finish.');
     }
     busy = true;
     notifyListeners();
     try {
+      if (!await AccountService.instance.verify(profile.id, password)) {
+        throw const AccountException('Incorrect password. Please try again.');
+      }
       await DatabaseService.instance.selectProfile(profile.id);
       await initializeProfile();
       current = profile;
@@ -26,6 +30,10 @@ class SessionService extends ChangeNotifier {
   }
 
   Future<void> signOut() async {
+    if (busy) {
+      throw const AccountException(
+          'Please wait for the current operation to finish.');
+    }
     if (activeSaves > 0) {
       throw const AccountException(
           'An entry is still being saved. Please wait before switching profiles.');
@@ -38,6 +46,18 @@ class SessionService extends ChangeNotifier {
     } finally {
       busy = false;
       notifyListeners();
+    }
+  }
+
+  Future<T> runMutation<T>(Future<T> Function() operation) async {
+    if (busy) {
+      throw const AccountException('Please wait before changing records.');
+    }
+    activeSaves++;
+    try {
+      return await operation();
+    } finally {
+      activeSaves--;
     }
   }
 

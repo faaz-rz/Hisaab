@@ -3,6 +3,7 @@ import '../models/bank_ledger.dart';
 import '../services/database_service.dart';
 import '../services/cloud_sync_service.dart';
 import '../services/entry_service.dart';
+import '../services/session_service.dart';
 
 final ledgerProvider =
     StateNotifierProvider<LedgerNotifier, AsyncValue<List<BankLedger>>>((ref) {
@@ -15,14 +16,15 @@ class LedgerNotifier extends StateNotifier<AsyncValue<List<BankLedger>>> {
   }
 
   Future<void> loadLedger() async {
+    if (!mounted) return;
     state = const AsyncValue.loading();
     try {
       final db = await DatabaseService.instance.ledgerDatabase;
       final maps = await db.query('bank_ledger', orderBy: 'date DESC');
       final items = maps.map((e) => BankLedger.fromMap(e)).toList();
-      state = AsyncValue.data(items);
+      if (mounted) state = AsyncValue.data(items);
     } catch (e, stack) {
-      state = AsyncValue.error(e, stack);
+      if (mounted) state = AsyncValue.error(e, stack);
     }
   }
 
@@ -45,9 +47,11 @@ class LedgerNotifier extends StateNotifier<AsyncValue<List<BankLedger>>> {
   }
 
   Future<void> deleteLedgerEntry(int id) async {
-    final db = await DatabaseService.instance.ledgerDatabase;
-    await db.delete('bank_ledger', where: 'id = ?', whereArgs: [id]);
-    await CloudSyncService.instance.pushLocalIfEnabled();
-    await loadLedger();
+    await SessionService.instance.runMutation(() async {
+      final db = await DatabaseService.instance.ledgerDatabase;
+      await db.delete('bank_ledger', where: 'id = ?', whereArgs: [id]);
+      await CloudSyncService.instance.pushLocalIfEnabled();
+      await loadLedger();
+    });
   }
 }

@@ -4,6 +4,7 @@ import '../services/database_service.dart';
 import '../services/agency_service.dart';
 import '../services/cloud_sync_service.dart';
 import '../services/entry_service.dart';
+import '../services/session_service.dart';
 
 final transactionsProvider = StateNotifierProvider<TransactionNotifier,
     AsyncValue<List<TransactionModel>>>((ref) {
@@ -26,14 +27,15 @@ class TransactionNotifier
   }
 
   Future<void> loadTransactions() async {
+    if (!mounted) return;
     state = const AsyncValue.loading();
     try {
       final db = await DatabaseService.instance.database;
       final maps = await db.query('transactions', orderBy: _transactionOrder);
       final txs = maps.map((e) => TransactionModel.fromMap(e)).toList();
-      state = AsyncValue.data(txs);
+      if (mounted) state = AsyncValue.data(txs);
     } catch (e, stack) {
-      state = AsyncValue.error(e, stack);
+      if (mounted) state = AsyncValue.error(e, stack);
     }
   }
 
@@ -68,10 +70,12 @@ class TransactionNotifier
   }
 
   Future<void> deleteTransaction(int id) async {
-    final db = await DatabaseService.instance.database;
-    await db.delete('transactions', where: 'id = ?', whereArgs: [id]);
-    await CloudSyncService.instance.pushLocalIfEnabled();
-    await loadTransactions();
+    await SessionService.instance.runMutation(() async {
+      final db = await DatabaseService.instance.database;
+      await db.delete('transactions', where: 'id = ?', whereArgs: [id]);
+      await CloudSyncService.instance.pushLocalIfEnabled();
+      await loadTransactions();
+    });
   }
 
   /// Get unpaid credit purchase bills for a given agency (by code or name).
