@@ -3,6 +3,7 @@ import '../models/transaction_model.dart';
 import '../services/database_service.dart';
 import '../services/agency_service.dart';
 import '../services/cloud_sync_service.dart';
+import '../services/entry_service.dart';
 
 final transactionsProvider = StateNotifierProvider<TransactionNotifier,
     AsyncValue<List<TransactionModel>>>((ref) {
@@ -46,18 +47,21 @@ class TransactionNotifier
     }
   }
 
-  Future<void> addTransaction(TransactionModel tx) async {
+  Future<void> addTransaction(TransactionModel tx,
+      {bool allowDuplicate = false, int? linkedBillId}) async {
     final db = await DatabaseService.instance.database;
-    await db.insert('transactions', tx.toMap());
+    await EntryService.save(db, 'transactions', tx.toMap(),
+        allowDuplicate: allowDuplicate, linkedBillId: linkedBillId);
     await _saveAgencyIfPresent(tx);
     await CloudSyncService.instance.pushLocalIfEnabled();
     await loadTransactions();
   }
 
-  Future<void> updateTransaction(TransactionModel tx) async {
+  Future<void> updateTransaction(TransactionModel tx,
+      {bool allowDuplicate = false}) async {
     final db = await DatabaseService.instance.database;
-    await db.update('transactions', tx.toMap(),
-        where: 'id = ?', whereArgs: [tx.id]);
+    await EntryService.save(db, 'transactions', tx.toMap(),
+        allowDuplicate: allowDuplicate);
     await _saveAgencyIfPresent(tx);
     await CloudSyncService.instance.pushLocalIfEnabled();
     await loadTransactions();

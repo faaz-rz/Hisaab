@@ -8,15 +8,17 @@ import 'screens/ledger_screen.dart';
 import 'screens/reports_screen.dart';
 import 'screens/main_scaffold.dart';
 import 'screens/backup_screen.dart';
+import 'screens/profiles_screen.dart';
 
 final _rootNavigatorKey = GlobalKey<NavigatorState>();
 final _shellNavigatorKey = GlobalKey<NavigatorState>();
 
 final routerProvider = Provider<GoRouter>((ref) {
-  return GoRouter(
+  final router = GoRouter(
     navigatorKey: _rootNavigatorKey,
     initialLocation: '/',
     routes: [
+      GoRoute(path: '/profiles', builder: (context, state) => const ProfilesScreen()),
       ShellRoute(
         navigatorKey: _shellNavigatorKey,
         builder: (context, state, child) {
@@ -51,4 +53,6 @@ final routerProvider = Provider<GoRouter>((ref) {
       ),
     ],
   );
+  ref.onDispose(router.dispose);
+  return router;
 });

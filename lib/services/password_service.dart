@@ -1,6 +1,7 @@
 import 'dart:convert';
 import 'package:crypto/crypto.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'profile_scope.dart';
 
 /// Manages user-created passwords for protected sections (Bank Ledger, Sales).
 /// Passwords are stored locally using SharedPreferences.
@@ -9,8 +10,8 @@ class PasswordService {
   PasswordService._();
 
   // SharedPreferences keys
-  static const String _ledgerPasswordKey = 'ledger_password';
-  static const String _salesPasswordKey = 'sales_password';
+  static String get _ledgerPasswordKey => ProfileScope.key('ledger_password');
+  static String get _salesPasswordKey => ProfileScope.key('sales_password');
   static const String _hashPrefix = 'sha256:';
 
   String _hashPassword(String password) {

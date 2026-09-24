@@ -5,36 +5,68 @@ import 'package:path_provider/path_provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:intl/intl.dart';
 import 'package:flutter/foundation.dart';
+import 'profile_scope.dart';
 
 class DatabaseService {
   static final DatabaseService instance = DatabaseService._init();
   static const databaseFileName = 'pharmacy_management_v7.db';
-  static Database? _database;
+  String _profileId = 'primary';
+  String get activeDatabaseFileName => _profileId == 'primary'
+      ? databaseFileName
+      : 'pharmacy_profile_$_profileId.db';
+  Database? _database;
+  Future<Database>? _opening;
+  final String? _documentsPath;
   static bool _ffiInitialized = false;
 
-  DatabaseService._init();
+  DatabaseService._init() : _documentsPath = null;
+
+  @visibleForTesting
+  DatabaseService.forTesting(String documentsPath)
+      : _documentsPath = documentsPath;
+
+  Future<String> _getDocumentsPath() async =>
+      _documentsPath ?? (await getApplicationDocumentsDirectory()).path;
 
   Future<Database> get database async {
     if (_database != null) return _database!;
-    _database = await _initDB(databaseFileName);
-    return _database!;
+    if (_opening != null) return _opening!;
+    final opening = _initDB(activeDatabaseFileName);
+    _opening = opening;
+    try {
+      _database = await opening;
+      return _database!;
+    } finally {
+      _opening = null;
+    }
   }
 
   Future<String> getDatabaseFilePath() async {
-    final docsPath = await getApplicationDocumentsDirectory();
-    final dbDirectory = Directory(join(docsPath.path, 'PharmacyManagement'));
+    final dbDirectory =
+        Directory(join(await _getDocumentsPath(), 'PharmacyManagement'));
     await dbDirectory.create(recursive: true);
-    return join(dbDirectory.path, databaseFileName);
+    return join(dbDirectory.path, activeDatabaseFileName);
+  }
+
+  Future<void> selectProfile(String id) async {
+    if (!RegExp(r'^(primary|[0-9a-f]{32})$').hasMatch(id)) {
+      throw ArgumentError.value(id, 'profile id');
+    }
+    if (_opening != null) await _opening;
+    await close();
+    _profileId = id;
+    ProfileScope.id = id;
   }
 
   Future<void> runDailyAutoBackup() async {
     try {
       final prefs = await SharedPreferences.getInstance();
-      final backupPath = prefs.getString('auto_backup_path');
+      final backupPath = prefs.getString(ProfileScope.key('auto_backup_path'));
       if (backupPath == null || backupPath.isEmpty) return;
 
       final dateStr = DateFormat('yyyy-MM-dd').format(DateTime.now());
-      final savePath = join(backupPath, 'pharmacy_autobackup_$dateStr.db');
+      final savePath = join(backupPath,
+          '${ProfileScope.filePrefix('pharmacy_autobackup')}_$dateStr.db');
 
       final backupFile = File(savePath);
 
@@ -48,23 +80,50 @@ class DatabaseService {
   }
 
   Future<Database> _initDB(String filePath) async {
-    final docsPath = await getApplicationDocumentsDirectory();
-    final dbDirectory = Directory(join(docsPath.path, 'PharmacyManagement'));
+    final dbDirectory =
+        Directory(join(await _getDocumentsPath(), 'PharmacyManagement'));
     await dbDirectory.create(recursive: true);
     final path = join(dbDirectory.path, filePath);
 
     final db = await _openDatabase(path);
 
-    // Run safe migrations for new columns
-    await _migrateDB(db);
-
-    return db;
+    try {
+      // Run safe migrations for new columns.
+      await db.transaction((txn) async {
+        await _ensureProfileOwnership(txn);
+        await _migrateDB(txn);
+      });
+      return db;
+    } catch (_) {
+      await db.close();
+      rethrow;
+    }
   }
 
-  Future<Database> _openDatabase(String path) async {
+  /// Runs before startup sync/migrations. VACUUM INTO includes committed WAL
+  /// data and leaves the original client database in place.
+  Future<void> prepareUpgradeBackup() async {
+    final path = await getDatabaseFilePath();
+    if (!await File(path).exists()) return;
+    final backup = File('$path.before_multi_user_v1.db');
+    if (await backup.exists()) return;
+    final temporary =
+        File('${backup.path}.${DateTime.now().microsecondsSinceEpoch}.tmp');
+    final db = await _openDatabase(path);
+    try {
+      await db.execute('VACUUM INTO ?', [temporary.path]);
+      await temporary.rename(backup.path);
+    } finally {
+      await db.close();
+    }
+  }
+
+  Future<Database> _openDatabase(String path, {bool readOnly = false}) async {
     final options = OpenDatabaseOptions(
-      version: 1,
-      onCreate: _createDB,
+      version: readOnly ? null : 1,
+      onCreate: readOnly ? null : _createDB,
+      readOnly: readOnly,
+      singleInstance: !readOnly,
     );
 
     if (!kIsWeb &&
@@ -76,11 +135,26 @@ class DatabaseService {
       return databaseFactoryFfi.openDatabase(path, options: options);
     }
 
-    return openDatabase(path, version: 1, onCreate: _createDB);
+    return openDatabase(path,
+        version: readOnly ? null : 1,
+        onCreate: readOnly ? null : _createDB,
+        readOnly: readOnly,
+        singleInstance: !readOnly);
+  }
+
+  Future<void> _ensureProfileOwnership(DatabaseExecutor db) async {
+    await db.execute(
+        'CREATE TABLE IF NOT EXISTS hisaab_profile (id TEXT NOT NULL PRIMARY KEY)');
+    final rows = await db.query('hisaab_profile');
+    if (rows.isEmpty) {
+      await db.insert('hisaab_profile', {'id': _profileId});
+    } else if (rows.length != 1 || rows.single['id'] != _profileId) {
+      throw StateError('This database belongs to a different profile.');
+    }
   }
 
   /// Safely add new columns that may not exist in older databases.
-  Future<void> _migrateDB(Database db) async {
+  Future<void> _migrateDB(DatabaseExecutor db) async {
     await _addColumnIfMissing(
       db,
       table: 'transactions',
@@ -120,7 +194,7 @@ class DatabaseService {
   }
 
   Future<void> _addColumnIfMissing(
-    Database db, {
+    DatabaseExecutor db, {
     required String table,
     required String column,
     required String definition,
@@ -228,51 +302,130 @@ CREATE TABLE bank_ledger (
 
   Future<void> copyDatabaseTo(String destinationPath) async {
     final sourcePath = await getDatabaseFilePath();
-
-    if (!await File(sourcePath).exists()) {
-      await database;
+    if (normalize(absolute(sourcePath)) ==
+        normalize(absolute(destinationPath))) {
+      throw ArgumentError(
+          'Choose a backup destination other than the active database.');
     }
 
-    await _prepareForFileCopy();
-
+    final db = await database;
     final destinationFile = File(destinationPath);
     await destinationFile.parent.create(recursive: true);
-    await File(sourcePath).copy(destinationPath);
+    final temporary =
+        File('$destinationPath.${DateTime.now().microsecondsSinceEpoch}.tmp');
+    try {
+      // Capture a consistent snapshot without closing a connection that the
+      // dashboard or another form may still be using.
+      await db.execute('VACUUM INTO ?', [temporary.path]);
+      await temporary.rename(destinationPath);
+    } finally {
+      if (await temporary.exists()) await temporary.delete();
+    }
   }
 
   Future<void> replaceDatabaseFromFile(String sourcePath) async {
-    await close();
-
     final destinationPath = await getDatabaseFilePath();
     final normalizedSource = normalize(absolute(sourcePath));
     final normalizedDestination = normalize(absolute(destinationPath));
     if (normalizedSource == normalizedDestination) {
-      _database = null;
       return;
     }
-
-    final destinationFile = File(destinationPath);
-    await destinationFile.parent.create(recursive: true);
-    await _deleteSQLiteSidecars(destinationPath);
-    await File(sourcePath).copy(destinationPath);
-    _database = null;
-  }
-
-  Future<void> _prepareForFileCopy() async {
-    final db = _database;
-    if (db == null) return;
-
+    final stamp = DateTime.now().microsecondsSinceEpoch;
+    final staged = File('$destinationPath.incoming_$stamp.db');
     try {
-      await db.rawQuery('PRAGMA wal_checkpoint(FULL)');
-    } catch (e) {
-      debugPrint('SQLite checkpoint skipped: $e');
-    }
+      await File(sourcePath).copy(staged.path);
+      final candidate = await _openDatabase(staged.path, readOnly: true);
+      try {
+        final integrity = await candidate.rawQuery('PRAGMA integrity_check');
+        if (integrity.length != 1 || integrity.single.values.single != 'ok') {
+          throw StateError(
+              'The backup is damaged. Your current records were kept.');
+        }
+        const requiredColumns = {
+          'transactions': [
+            'id',
+            'type',
+            'date',
+            'total_amount',
+            'upi_amount',
+            'agency_name',
+            'agency_code',
+            'bill_no',
+            'original_bill_no',
+            'profit',
+            'discount',
+            'adjustment_details',
+            'bill_date'
+          ],
+          'expenses': [
+            'id',
+            'category_id',
+            'amount',
+            'date',
+            'note',
+            'staff_name'
+          ],
+          'expense_categories': ['id', 'name', 'is_active'],
+          'bank_ledger': [
+            'id',
+            'type',
+            'bank_name',
+            'bank_code',
+            'account_no',
+            'amount',
+            'date',
+            'purpose'
+          ],
+        };
+        for (final entry in requiredColumns.entries) {
+          final columns =
+              (await candidate.rawQuery('PRAGMA table_info(${entry.key})'))
+                  .map((row) => row['name'])
+                  .toSet();
+          if (!columns.containsAll(entry.value)) {
+            throw StateError(
+                'This is not a HISAAB backup. Your current records were kept.');
+          }
+        }
+        final hasOwner = (await candidate.rawQuery(
+                "SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'hisaab_profile'"))
+            .isNotEmpty;
+        final owners = hasOwner
+            ? await candidate.query('hisaab_profile')
+            : <Map<String, Object?>>[];
+        if ((hasOwner &&
+                (owners.length != 1 || owners.single['id'] != _profileId)) ||
+            (!hasOwner && _profileId != 'primary')) {
+          throw StateError(
+              'This backup belongs to another profile. Switch to that profile to restore it.');
+        }
+      } finally {
+        await candidate.close();
+      }
 
-    await close();
+      // Keep a consistent recovery copy before replacing any active records.
+      final destination = File(destinationPath);
+      File? recovery;
+      if (await destination.exists()) {
+        recovery = File('$destinationPath.before_restore_$stamp.db');
+        await copyDatabaseTo(recovery.path);
+      }
+      await close();
+      await _deleteSQLiteSidecars(destinationPath);
+      if (await destination.exists()) await destination.delete();
+      try {
+        await staged.rename(destinationPath);
+      } catch (_) {
+        if (recovery != null) await recovery.copy(destinationPath);
+        rethrow;
+      }
+    } finally {
+      if (await staged.exists()) await staged.delete();
+    }
   }
 
   Future<void> _deleteSQLiteSidecars(String databasePath) async {
-    for (final suffix in ['', '-wal', '-shm', '-journal']) {
+    for (final suffix in ['-wal', '-shm', '-journal']) {
       final file = File('$databasePath$suffix');
       if (await file.exists()) {
         await file.delete();

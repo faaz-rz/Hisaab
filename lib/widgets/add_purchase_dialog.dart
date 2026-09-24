@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'save_entry.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
 import 'package:google_fonts/google_fonts.dart';
@@ -57,6 +58,7 @@ class _AddPurchaseDialogState extends ConsumerState<AddPurchaseDialog> {
   }
 
   void _savePurchase() async {
+    if (_isSaving) return;
     if (!_formKey.currentState!.validate()) return;
     setState(() => _isSaving = true);
 
@@ -69,14 +71,20 @@ class _AddPurchaseDialogState extends ConsumerState<AddPurchaseDialog> {
       agencyCode: _agencyCodeCtrl.text,
       billNo: _billNoCtrl.text,
       billDate: _billDate.toIso8601String(),
+      paidAmount: widget.existingTx?.paidAmount ?? 0,
     );
 
-    if (widget.existingTx != null) {
-      await ref.read(transactionsProvider.notifier).updateTransaction(tx);
-    } else {
-      await ref.read(transactionsProvider.notifier).addTransaction(tx);
-    }
-    if (mounted) Navigator.of(context).pop();
+    final saved = await saveEntry(context, (allowDuplicate) async {
+      final notifier = ref.read(transactionsProvider.notifier);
+      if (widget.existingTx != null) {
+        await notifier.updateTransaction(tx, allowDuplicate: allowDuplicate);
+      } else {
+        await notifier.addTransaction(tx, allowDuplicate: allowDuplicate);
+      }
+    });
+    if (!mounted) return;
+    setState(() => _isSaving = false);
+    if (saved) Navigator.of(context).pop();
   }
 
   Widget _dateRow(

@@ -2,6 +2,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../models/bank_ledger.dart';
 import '../services/database_service.dart';
 import '../services/cloud_sync_service.dart';
+import '../services/entry_service.dart';
 
 final ledgerProvider =
     StateNotifierProvider<LedgerNotifier, AsyncValue<List<BankLedger>>>((ref) {
@@ -25,17 +26,18 @@ class LedgerNotifier extends StateNotifier<AsyncValue<List<BankLedger>>> {
     }
   }
 
-  Future<void> addLedgerEntry(BankLedger entry) async {
+  Future<void> addLedgerEntry(BankLedger entry, {bool allowDuplicate = false}) async {
     final db = await DatabaseService.instance.database;
-    await db.insert('bank_ledger', entry.toMap());
+    await EntryService.save(db, 'bank_ledger', entry.toMap(),
+        allowDuplicate: allowDuplicate);
     await CloudSyncService.instance.pushLocalIfEnabled();
     await loadLedger();
   }
 
-  Future<void> updateLedgerEntry(BankLedger entry) async {
+  Future<void> updateLedgerEntry(BankLedger entry, {bool allowDuplicate = false}) async {
     final db = await DatabaseService.instance.database;
-    await db.update('bank_ledger', entry.toMap(),
-        where: 'id = ?', whereArgs: [entry.id]);
+    await EntryService.save(db, 'bank_ledger', entry.toMap(),
+        allowDuplicate: allowDuplicate);
     await CloudSyncService.instance.pushLocalIfEnabled();
     await loadLedger();
   }

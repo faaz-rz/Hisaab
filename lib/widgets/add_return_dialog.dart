@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'save_entry.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
 import 'package:google_fonts/google_fonts.dart';
@@ -80,6 +81,7 @@ class _AddReturnDialogState extends ConsumerState<AddReturnDialog> {
   }
 
   void _saveReturn() async {
+    if (_isSaving) return;
     if (!_formKey.currentState!.validate()) return;
 
     final amount = double.parse(_amountCtrl.text);
@@ -111,17 +113,12 @@ class _AddReturnDialogState extends ConsumerState<AddReturnDialog> {
       billNo: _selectedBill?.billNo,
     );
 
-    await ref.read(transactionsProvider.notifier).addTransaction(tx);
-
-    // Apply payment to the selected bill
-    if (_selectedBill != null) {
-      await ref.read(transactionsProvider.notifier).applyPaymentToBill(
-        _selectedBill!.id!,
-        amount,
-      );
-    }
-
-    if (mounted) Navigator.of(context).pop();
+    final saved = await saveEntry(context, (allowDuplicate) =>
+        ref.read(transactionsProvider.notifier).addTransaction(tx,
+            allowDuplicate: allowDuplicate, linkedBillId: _selectedBill?.id));
+    if (!mounted) return;
+    setState(() => _isSaving = false);
+    if (saved) Navigator.of(context).pop();
   }
 
   Widget _dateRow(String label, DateTime date, ValueChanged<DateTime> onChanged) {

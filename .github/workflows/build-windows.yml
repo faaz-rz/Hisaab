@@ -13,15 +13,18 @@ jobs:
       - uses: subosito/flutter-action@v2
         with:
           channel: stable
+          flutter-version: '3.47.1'
 
       - run: flutter pub get
+      - run: flutter test
       - run: flutter build windows --release
+      - run: dart run tooling/bundle_windows_sqlite.dart
 
       - name: Verify release bundle
         shell: pwsh
         run: |
           $release = "build/windows/x64/runner/Release"
-          $exe = Join-Path $release "pharmacy_management.exe"
+          $exe = Join-Path $release "HISAAB.exe"
           $data = Join-Path $release "data"
 
           if (!(Test-Path $exe)) {
@@ -32,12 +35,16 @@ jobs:
             throw "Missing Flutter data folder: $data"
           }
 
+          if (!(Test-Path (Join-Path $release "sqlite3.dll"))) {
+            throw "Missing SQLite runtime"
+          }
+
           Get-ChildItem $release | Format-Table Name, Length
 
       - name: Smoke launch Windows app
         shell: pwsh
         run: |
-          $exe = Resolve-Path "build/windows/x64/runner/Release/pharmacy_management.exe"
+          $exe = Resolve-Path "build/windows/x64/runner/Release/HISAAB.exe"
           $process = Start-Process -FilePath $exe -PassThru
           Start-Sleep -Seconds 10
 

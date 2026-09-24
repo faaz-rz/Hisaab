@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'save_entry.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
 import 'package:google_fonts/google_fonts.dart';
@@ -32,6 +33,7 @@ class _AddSaleDialogState extends ConsumerState<AddSaleDialog> {
       final upi = widget.existingTx!.upiAmount ?? 0.0;
       _salesCtrl.text = total > 0 ? total.toString() : '';
       _upiCtrl.text = upi > 0 ? upi.toString() : '';
+      _profitCtrl.text = widget.existingTx!.profit?.toString() ?? '';
       try { _entryDate = DateTime.parse(widget.existingTx!.date); } catch (_) {}
     }
   }
@@ -46,6 +48,7 @@ class _AddSaleDialogState extends ConsumerState<AddSaleDialog> {
   }
 
   void _saveSale() async {
+    if (_isSaving) return;
     if (!_formKey.currentState!.validate()) return;
     setState(() => _isSaving = true);
 
@@ -58,14 +61,25 @@ class _AddSaleDialogState extends ConsumerState<AddSaleDialog> {
       date: _entryDate.toIso8601String(),
       totalAmount: total,
       upiAmount: upi,
+      profit: _profitCtrl.text.isNotEmpty
+          ? double.parse(_profitCtrl.text)
+          : _profitPctCtrl.text.isNotEmpty
+              ? total * double.parse(_profitPctCtrl.text) / 100
+              : null,
+      discount: widget.existingTx?.discount,
     );
 
-    if (widget.existingTx != null) {
-      await ref.read(transactionsProvider.notifier).updateTransaction(tx);
-    } else {
-      await ref.read(transactionsProvider.notifier).addTransaction(tx);
-    }
-    if (mounted) Navigator.of(context).pop();
+    final saved = await saveEntry(context, (allowDuplicate) async {
+      final notifier = ref.read(transactionsProvider.notifier);
+      if (widget.existingTx != null) {
+        await notifier.updateTransaction(tx, allowDuplicate: allowDuplicate);
+      } else {
+        await notifier.addTransaction(tx, allowDuplicate: allowDuplicate);
+      }
+    });
+    if (!mounted) return;
+    setState(() => _isSaving = false);
+    if (saved) Navigator.of(context).pop();
   }
 
   @override

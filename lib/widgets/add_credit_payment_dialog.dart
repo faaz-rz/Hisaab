@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'save_entry.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
 import 'package:google_fonts/google_fonts.dart';
@@ -76,6 +77,7 @@ class _AddCreditPaymentDialogState
   }
 
   void _savePayment() async {
+    if (_isSaving) return;
     if (!_formKey.currentState!.validate()) return;
 
     final amount = double.parse(_amountCtrl.text);
@@ -108,17 +110,12 @@ class _AddCreditPaymentDialogState
               : null,
     );
 
-    await ref.read(transactionsProvider.notifier).addTransaction(tx);
-
-    // Apply payment to the selected bill
-    if (_selectedBill != null) {
-      await ref.read(transactionsProvider.notifier).applyPaymentToBill(
-            _selectedBill!.id!,
-            amount,
-          );
-    }
-
-    if (mounted) Navigator.of(context).pop();
+    final saved = await saveEntry(context, (allowDuplicate) =>
+        ref.read(transactionsProvider.notifier).addTransaction(tx,
+            allowDuplicate: allowDuplicate, linkedBillId: _selectedBill?.id));
+    if (!mounted) return;
+    setState(() => _isSaving = false);
+    if (saved) Navigator.of(context).pop();
   }
 
   /// Builds the selectable unpaid bills list

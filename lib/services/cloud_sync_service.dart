@@ -6,6 +6,7 @@ import 'package:path/path.dart' as p;
 import 'package:shared_preferences/shared_preferences.dart';
 
 import 'database_service.dart';
+import 'profile_scope.dart';
 
 class CloudSyncResult {
   final bool isSuccess;
@@ -48,11 +49,11 @@ class CloudSyncSnapshot {
 class CloudSyncService {
   static final CloudSyncService instance = CloudSyncService._();
 
-  static const cloudDatabaseFileName = 'hisaab_cloud.db';
-  static const _folderPathKey = 'cloud_sync_folder_path';
-  static const _lastSyncKey = 'cloud_sync_last_sync';
-  static const _lastMessageKey = 'cloud_sync_last_message';
-  static const _needsSetupKey = 'cloud_sync_needs_setup';
+  static String get cloudDatabaseFileName => '${ProfileScope.filePrefix('hisaab_cloud')}.db';
+  static String get _folderPathKey => ProfileScope.key('cloud_sync_folder_path');
+  static String get _lastSyncKey => ProfileScope.key('cloud_sync_last_sync');
+  static String get _lastMessageKey => ProfileScope.key('cloud_sync_last_message');
+  static String get _needsSetupKey => ProfileScope.key('cloud_sync_needs_setup');
   static const _mtimeTolerance = Duration(seconds: 2);
 
   CloudSyncService._();
@@ -206,7 +207,16 @@ class CloudSyncService {
       );
     }
 
-    return uploadLocalCopy();
+    try {
+      return await uploadLocalCopy();
+    } catch (error) {
+      // The local write has already committed. A cloud folder failure must
+      // not make the form report that the local entry failed to save.
+      const message = 'Saved on this computer. Cloud upload failed; open Backup & Sync to retry.';
+      debugPrint('Cloud upload failed: $error');
+      try { await _recordMessage(message); } catch (_) {}
+      return const CloudSyncResult(isSuccess: false, changedData: false, message: message);
+    }
   }
 
   Future<CloudSyncResult> uploadLocalCopy() async {

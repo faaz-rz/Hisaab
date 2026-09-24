@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../services/profile_scope.dart';
 import 'package:file_picker/file_picker.dart';
 import 'dart:io';
 import 'package:intl/intl.dart';
@@ -35,39 +36,48 @@ class _BackupScreenState extends State<BackupScreen> {
     final cloudSnapshot = await CloudSyncService.instance.getSnapshot();
     if (!mounted) return;
     setState(() {
-      _autoBackupPath = prefs.getString('auto_backup_path');
+      _autoBackupPath = prefs.getString(ProfileScope.key('auto_backup_path'));
       _cloudSnapshot = cloudSnapshot;
     });
   }
 
   Future<void> _setAutoBackupFolder() async {
-    final String? selectedDirectory = await FilePicker.getDirectoryPath(
-      dialogTitle: 'Select Auto-Backup Folder',
-    );
-    if (selectedDirectory != null) {
-      final prefs = await SharedPreferences.getInstance();
-      await prefs.setString('auto_backup_path', selectedDirectory);
-      setState(() {
-        _autoBackupPath = selectedDirectory;
-      });
-      await DatabaseService.instance.runDailyAutoBackup();
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: const Text('Auto-backup folder set successfully!'),
-            backgroundColor: AppColors.success,
-            behavior: SnackBarBehavior.floating,
-            shape:
-                RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-          ),
-        );
+    setState(() => _isProcessing = true);
+    try {
+      final String? selectedDirectory = await FilePicker.getDirectoryPath(
+        dialogTitle: 'Select Auto-Backup Folder',
+      );
+      if (selectedDirectory != null) {
+        final prefs = await SharedPreferences.getInstance();
+        await prefs.setString(
+            ProfileScope.key('auto_backup_path'), selectedDirectory);
+        setState(() {
+          _autoBackupPath = selectedDirectory;
+        });
+        await DatabaseService.instance.runDailyAutoBackup();
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: const Text('Auto-backup folder set successfully!'),
+              backgroundColor: AppColors.success,
+              behavior: SnackBarBehavior.floating,
+              shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(12)),
+            ),
+          );
+        }
       }
+    } catch (error) {
+      if (mounted)
+        _showSnack('Could not configure auto-backup: $error', AppColors.danger);
+    } finally {
+      if (mounted) setState(() => _isProcessing = false);
     }
   }
 
   Future<void> _disableAutoBackup() async {
     final prefs = await SharedPreferences.getInstance();
-    await prefs.remove('auto_backup_path');
+    await prefs.remove(ProfileScope.key('auto_backup_path'));
     setState(() {
       _autoBackupPath = null;
     });
@@ -311,8 +321,8 @@ class _BackupScreenState extends State<BackupScreen> {
       );
 
       if (selectedDirectory != null) {
-        final savePath =
-            p.join(selectedDirectory, 'pharmacy_backup_$dateStr.db');
+        final savePath = p.join(selectedDirectory,
+            '${ProfileScope.filePrefix('pharmacy_backup')}_$dateStr.db');
         await DatabaseService.instance.copyDatabaseTo(savePath);
 
         if (mounted) {
@@ -538,341 +548,349 @@ class _BackupScreenState extends State<BackupScreen> {
     final cloudSnapshot = _cloudSnapshot;
     final cloudEnabled = cloudSnapshot?.isEnabled ?? false;
 
-    return Scaffold(
-      backgroundColor: AppColors.surface,
-      appBar: AppBar(
-        title: const Text('Backup & Sync'),
-        centerTitle: true,
-      ),
-      body: Stack(
-        children: [
-          SingleChildScrollView(
-            padding: const EdgeInsets.all(28),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                // ─── Header ───
-                Center(
-                  child: Container(
-                    padding: const EdgeInsets.all(20),
-                    decoration: BoxDecoration(
-                      gradient: const LinearGradient(
-                        colors: [AppColors.primary, AppColors.primaryLight],
+    return PopScope(
+        canPop: !_isProcessing,
+        child: Scaffold(
+          backgroundColor: AppColors.surface,
+          appBar: AppBar(
+            title: const Text('Backup & Sync'),
+            centerTitle: true,
+          ),
+          body: Stack(
+            children: [
+              SingleChildScrollView(
+                padding: const EdgeInsets.all(28),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    // ─── Header ───
+                    Center(
+                      child: Container(
+                        padding: const EdgeInsets.all(20),
+                        decoration: BoxDecoration(
+                          gradient: const LinearGradient(
+                            colors: [AppColors.primary, AppColors.primaryLight],
+                          ),
+                          borderRadius: BorderRadius.circular(20),
+                        ),
+                        child: const Icon(Icons.cloud_sync_rounded,
+                            size: 48, color: Colors.white),
                       ),
-                      borderRadius: BorderRadius.circular(20),
                     ),
-                    child: const Icon(Icons.cloud_sync_rounded,
-                        size: 48, color: Colors.white),
-                  ),
-                ),
-                const SizedBox(height: 24),
-                Text(
-                  'Local Cloud Backup',
-                  textAlign: TextAlign.center,
-                  style: GoogleFonts.inter(
-                      fontSize: 24,
-                      fontWeight: FontWeight.w800,
-                      color: AppColors.textPrimary),
-                ),
-                const SizedBox(height: 8),
-                Text(
-                  'Export your database to a secure location such as OneDrive or Google Drive.',
-                  textAlign: TextAlign.center,
-                  style: GoogleFonts.inter(
-                      fontSize: 14, color: AppColors.textSecondary),
-                ),
-                const SizedBox(height: 36),
+                    const SizedBox(height: 24),
+                    Text(
+                      'Local Cloud Backup',
+                      textAlign: TextAlign.center,
+                      style: GoogleFonts.inter(
+                          fontSize: 24,
+                          fontWeight: FontWeight.w800,
+                          color: AppColors.textPrimary),
+                    ),
+                    const SizedBox(height: 8),
+                    Text(
+                      'Export your database to a secure location such as OneDrive or Google Drive.',
+                      textAlign: TextAlign.center,
+                      style: GoogleFonts.inter(
+                          fontSize: 14, color: AppColors.textSecondary),
+                    ),
+                    const SizedBox(height: 36),
 
-                // ─── Cloud Sync ───
-                Text('Cloud Sync',
-                    style: GoogleFonts.inter(
-                        fontSize: 15,
-                        fontWeight: FontWeight.w700,
-                        color: AppColors.textSecondary,
-                        letterSpacing: 0.5)),
-                const SizedBox(height: 12),
-                Container(
-                  padding: const EdgeInsets.all(20),
-                  decoration: BoxDecoration(
-                    color: cloudEnabled
-                        ? AppColors.info.withValues(alpha: 0.05)
-                        : Colors.white,
-                    borderRadius: BorderRadius.circular(16),
-                    border: Border.all(
-                      color: cloudEnabled
-                          ? AppColors.info.withValues(alpha: 0.3)
-                          : AppColors.divider,
-                    ),
-                  ),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Row(
+                    // ─── Cloud Sync ───
+                    Text('Cloud Sync',
+                        style: GoogleFonts.inter(
+                            fontSize: 15,
+                            fontWeight: FontWeight.w700,
+                            color: AppColors.textSecondary,
+                            letterSpacing: 0.5)),
+                    const SizedBox(height: 12),
+                    Container(
+                      padding: const EdgeInsets.all(20),
+                      decoration: BoxDecoration(
+                        color: cloudEnabled
+                            ? AppColors.info.withValues(alpha: 0.05)
+                            : Colors.white,
+                        borderRadius: BorderRadius.circular(16),
+                        border: Border.all(
+                          color: cloudEnabled
+                              ? AppColors.info.withValues(alpha: 0.3)
+                              : AppColors.divider,
+                        ),
+                      ),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          Container(
-                            padding: const EdgeInsets.all(8),
-                            decoration: BoxDecoration(
-                              color: (cloudEnabled
+                          Row(
+                            children: [
+                              Container(
+                                padding: const EdgeInsets.all(8),
+                                decoration: BoxDecoration(
+                                  color: (cloudEnabled
+                                          ? AppColors.info
+                                          : AppColors.warning)
+                                      .withValues(alpha: 0.1),
+                                  borderRadius: BorderRadius.circular(10),
+                                ),
+                                child: Icon(
+                                  cloudEnabled
+                                      ? Icons.cloud_done_rounded
+                                      : Icons.cloud_off_rounded,
+                                  color: cloudEnabled
                                       ? AppColors.info
-                                      : AppColors.warning)
-                                  .withValues(alpha: 0.1),
-                              borderRadius: BorderRadius.circular(10),
-                            ),
-                            child: Icon(
-                              cloudEnabled
-                                  ? Icons.cloud_done_rounded
-                                  : Icons.cloud_off_rounded,
-                              color: cloudEnabled
-                                  ? AppColors.info
-                                  : AppColors.warning,
-                              size: 20,
+                                      : AppColors.warning,
+                                  size: 20,
+                                ),
+                              ),
+                              const SizedBox(width: 12),
+                              Expanded(
+                                child: Text(
+                                  cloudEnabled
+                                      ? 'Cloud Sync Connected'
+                                      : 'Cloud Sync Not Connected',
+                                  style: GoogleFonts.inter(
+                                    fontWeight: FontWeight.w600,
+                                    color: cloudEnabled
+                                        ? AppColors.info
+                                        : AppColors.warning,
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+                          const SizedBox(height: 12),
+                          Text(
+                            cloudEnabled
+                                ? 'This device syncs with:\n${cloudSnapshot?.folderPath ?? ''}'
+                                : 'Choose a folder inside iCloud Drive, OneDrive, Google Drive, Dropbox, or another synced location.',
+                            style: GoogleFonts.inter(
+                              fontSize: 13,
+                              color: AppColors.textSecondary,
                             ),
                           ),
-                          const SizedBox(width: 12),
-                          Expanded(
-                            child: Text(
-                              cloudEnabled
-                                  ? 'Cloud Sync Connected'
-                                  : 'Cloud Sync Not Connected',
-                              style: GoogleFonts.inter(
-                                fontWeight: FontWeight.w600,
-                                color: cloudEnabled
-                                    ? AppColors.info
-                                    : AppColors.warning,
-                              ),
+                          if (cloudEnabled) ...[
+                            const SizedBox(height: 14),
+                            _SyncDetailRow(
+                              label: 'Cloud file',
+                              value: cloudSnapshot?.cloudFileExists == true
+                                  ? CloudSyncService.cloudDatabaseFileName
+                                  : 'No cloud database yet',
                             ),
+                            _SyncDetailRow(
+                              label: 'Local updated',
+                              value:
+                                  _formatSyncDate(cloudSnapshot?.localModified),
+                            ),
+                            _SyncDetailRow(
+                              label: 'Cloud updated',
+                              value:
+                                  _formatSyncDate(cloudSnapshot?.cloudModified),
+                            ),
+                            _SyncDetailRow(
+                              label: 'Last sync',
+                              value: cloudSnapshot?.lastMessage ??
+                                  _formatSyncDate(cloudSnapshot?.lastSync),
+                            ),
+                          ],
+                          const SizedBox(height: 16),
+                          Wrap(
+                            alignment: WrapAlignment.end,
+                            spacing: 8,
+                            runSpacing: 8,
+                            children: [
+                              if (cloudEnabled)
+                                TextButton(
+                                  onPressed:
+                                      _isProcessing ? null : _disableCloudSync,
+                                  child: Text('Disconnect',
+                                      style: GoogleFonts.inter(
+                                          color: AppColors.danger)),
+                                ),
+                              if (cloudEnabled)
+                                OutlinedButton.icon(
+                                  onPressed: _isProcessing ? null : _syncNow,
+                                  icon:
+                                      const Icon(Icons.sync_rounded, size: 18),
+                                  label: const Text('Sync Now'),
+                                ),
+                              FilledButton.icon(
+                                onPressed:
+                                    _isProcessing ? null : _setCloudSyncFolder,
+                                icon: const Icon(Icons.folder_open_rounded,
+                                    size: 18),
+                                label: Text(
+                                  cloudEnabled ? 'Change Folder' : 'Connect',
+                                ),
+                              ),
+                            ],
                           ),
                         ],
+                      ),
+                    ),
+                    if (cloudEnabled) ...[
+                      const SizedBox(height: 12),
+                      _ActionCard(
+                        icon: Icons.cloud_upload_rounded,
+                        iconColor: AppColors.info,
+                        title: 'Upload This Device',
+                        subtitle:
+                            'Replace the cloud copy with this device database.',
+                        onTap: _isProcessing
+                            ? null
+                            : () => _uploadLocalCloudCopy(),
                       ),
                       const SizedBox(height: 12),
-                      Text(
-                        cloudEnabled
-                            ? 'This device syncs with:\n${cloudSnapshot?.folderPath ?? ''}'
-                            : 'Choose a folder inside iCloud Drive, OneDrive, Google Drive, Dropbox, or another synced location.',
-                        style: GoogleFonts.inter(
-                          fontSize: 13,
-                          color: AppColors.textSecondary,
-                        ),
-                      ),
-                      if (cloudEnabled) ...[
-                        const SizedBox(height: 14),
-                        _SyncDetailRow(
-                          label: 'Cloud file',
-                          value: cloudSnapshot?.cloudFileExists == true
-                              ? CloudSyncService.cloudDatabaseFileName
-                              : 'No cloud database yet',
-                        ),
-                        _SyncDetailRow(
-                          label: 'Local updated',
-                          value: _formatSyncDate(cloudSnapshot?.localModified),
-                        ),
-                        _SyncDetailRow(
-                          label: 'Cloud updated',
-                          value: _formatSyncDate(cloudSnapshot?.cloudModified),
-                        ),
-                        _SyncDetailRow(
-                          label: 'Last sync',
-                          value: cloudSnapshot?.lastMessage ??
-                              _formatSyncDate(cloudSnapshot?.lastSync),
-                        ),
-                      ],
-                      const SizedBox(height: 16),
-                      Wrap(
-                        alignment: WrapAlignment.end,
-                        spacing: 8,
-                        runSpacing: 8,
-                        children: [
-                          if (cloudEnabled)
-                            TextButton(
-                              onPressed:
-                                  _isProcessing ? null : _disableCloudSync,
-                              child: Text('Disconnect',
-                                  style: GoogleFonts.inter(
-                                      color: AppColors.danger)),
-                            ),
-                          if (cloudEnabled)
-                            OutlinedButton.icon(
-                              onPressed: _isProcessing ? null : _syncNow,
-                              icon: const Icon(Icons.sync_rounded, size: 18),
-                              label: const Text('Sync Now'),
-                            ),
-                          FilledButton.icon(
-                            onPressed:
-                                _isProcessing ? null : _setCloudSyncFolder,
-                            icon:
-                                const Icon(Icons.folder_open_rounded, size: 18),
-                            label: Text(
-                              cloudEnabled ? 'Change Folder' : 'Connect',
-                            ),
-                          ),
-                        ],
+                      _ActionCard(
+                        icon: Icons.cloud_download_rounded,
+                        iconColor: AppColors.accent,
+                        title: 'Download Cloud Copy',
+                        subtitle:
+                            'Use the cloud database on this device, then restart.',
+                        onTap:
+                            _isProcessing ? null : () => _downloadCloudCopy(),
                       ),
                     ],
-                  ),
-                ),
-                if (cloudEnabled) ...[
-                  const SizedBox(height: 12),
-                  _ActionCard(
-                    icon: Icons.cloud_upload_rounded,
-                    iconColor: AppColors.info,
-                    title: 'Upload This Device',
-                    subtitle:
-                        'Replace the cloud copy with this device database.',
-                    onTap: _isProcessing ? null : () => _uploadLocalCloudCopy(),
-                  ),
-                  const SizedBox(height: 12),
-                  _ActionCard(
-                    icon: Icons.cloud_download_rounded,
-                    iconColor: AppColors.accent,
-                    title: 'Download Cloud Copy',
-                    subtitle:
-                        'Use the cloud database on this device, then restart.',
-                    onTap: _isProcessing ? null : () => _downloadCloudCopy(),
-                  ),
-                ],
-                const SizedBox(height: 36),
+                    const SizedBox(height: 36),
 
-                // ─── Auto Backup ───
-                Text('Daily Auto-Backup',
-                    style: GoogleFonts.inter(
-                        fontSize: 15,
-                        fontWeight: FontWeight.w700,
-                        color: AppColors.textSecondary,
-                        letterSpacing: 0.5)),
-                const SizedBox(height: 12),
-                Container(
-                  padding: const EdgeInsets.all(20),
-                  decoration: BoxDecoration(
-                    color: _autoBackupPath != null
-                        ? AppColors.success.withValues(alpha: 0.05)
-                        : Colors.white,
-                    borderRadius: BorderRadius.circular(16),
-                    border: Border.all(
+                    // ─── Auto Backup ───
+                    Text('Daily Auto-Backup',
+                        style: GoogleFonts.inter(
+                            fontSize: 15,
+                            fontWeight: FontWeight.w700,
+                            color: AppColors.textSecondary,
+                            letterSpacing: 0.5)),
+                    const SizedBox(height: 12),
+                    Container(
+                      padding: const EdgeInsets.all(20),
+                      decoration: BoxDecoration(
                         color: _autoBackupPath != null
-                            ? AppColors.success.withValues(alpha: 0.3)
-                            : AppColors.divider),
-                  ),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Row(
+                            ? AppColors.success.withValues(alpha: 0.05)
+                            : Colors.white,
+                        borderRadius: BorderRadius.circular(16),
+                        border: Border.all(
+                            color: _autoBackupPath != null
+                                ? AppColors.success.withValues(alpha: 0.3)
+                                : AppColors.divider),
+                      ),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          Container(
-                            padding: const EdgeInsets.all(8),
-                            decoration: BoxDecoration(
-                              color: (_autoBackupPath != null
+                          Row(
+                            children: [
+                              Container(
+                                padding: const EdgeInsets.all(8),
+                                decoration: BoxDecoration(
+                                  color: (_autoBackupPath != null
+                                          ? AppColors.success
+                                          : AppColors.warning)
+                                      .withValues(alpha: 0.1),
+                                  borderRadius: BorderRadius.circular(10),
+                                ),
+                                child: Icon(
+                                  _autoBackupPath != null
+                                      ? Icons.check_circle_rounded
+                                      : Icons.warning_amber_rounded,
+                                  color: _autoBackupPath != null
                                       ? AppColors.success
-                                      : AppColors.warning)
-                                  .withValues(alpha: 0.1),
-                              borderRadius: BorderRadius.circular(10),
-                            ),
-                            child: Icon(
-                              _autoBackupPath != null
-                                  ? Icons.check_circle_rounded
-                                  : Icons.warning_amber_rounded,
-                              color: _autoBackupPath != null
-                                  ? AppColors.success
-                                  : AppColors.warning,
-                              size: 20,
-                            ),
+                                      : AppColors.warning,
+                                  size: 20,
+                                ),
+                              ),
+                              const SizedBox(width: 12),
+                              Text(
+                                _autoBackupPath != null
+                                    ? 'Auto-Backup Enabled'
+                                    : 'Auto-Backup Disabled',
+                                style: GoogleFonts.inter(
+                                  fontWeight: FontWeight.w600,
+                                  color: _autoBackupPath != null
+                                      ? AppColors.success
+                                      : AppColors.warning,
+                                ),
+                              ),
+                            ],
                           ),
-                          const SizedBox(width: 12),
+                          const SizedBox(height: 12),
                           Text(
                             _autoBackupPath != null
-                                ? 'Auto-Backup Enabled'
-                                : 'Auto-Backup Disabled',
+                                ? 'Backing up daily to:\n$_autoBackupPath'
+                                : 'Select a synced folder. The app will automatically save a backup every day.',
                             style: GoogleFonts.inter(
-                              fontWeight: FontWeight.w600,
-                              color: _autoBackupPath != null
-                                  ? AppColors.success
-                                  : AppColors.warning,
-                            ),
+                                fontSize: 13, color: AppColors.textSecondary),
+                          ),
+                          const SizedBox(height: 16),
+                          Row(
+                            mainAxisAlignment: MainAxisAlignment.end,
+                            children: [
+                              if (_autoBackupPath != null)
+                                TextButton(
+                                  onPressed: _disableAutoBackup,
+                                  child: Text('Disable',
+                                      style: GoogleFonts.inter(
+                                          color: AppColors.danger)),
+                                ),
+                              const SizedBox(width: 8),
+                              FilledButton.icon(
+                                onPressed: _setAutoBackupFolder,
+                                icon: const Icon(Icons.folder_open_rounded,
+                                    size: 18),
+                                label: Text(_autoBackupPath != null
+                                    ? 'Change Folder'
+                                    : 'Set Folder'),
+                              ),
+                            ],
                           ),
                         ],
                       ),
-                      const SizedBox(height: 12),
-                      Text(
-                        _autoBackupPath != null
-                            ? 'Backing up daily to:\n$_autoBackupPath'
-                            : 'Select a synced folder. The app will automatically save a backup every day.',
+                    ),
+
+                    const SizedBox(height: 36),
+                    Text('Manual Actions',
                         style: GoogleFonts.inter(
-                            fontSize: 13, color: AppColors.textSecondary),
-                      ),
-                      const SizedBox(height: 16),
-                      Row(
-                        mainAxisAlignment: MainAxisAlignment.end,
-                        children: [
-                          if (_autoBackupPath != null)
-                            TextButton(
-                              onPressed: _disableAutoBackup,
-                              child: Text('Disable',
-                                  style: GoogleFonts.inter(
-                                      color: AppColors.danger)),
-                            ),
-                          const SizedBox(width: 8),
-                          FilledButton.icon(
-                            onPressed: _setAutoBackupFolder,
-                            icon:
-                                const Icon(Icons.folder_open_rounded, size: 18),
-                            label: Text(_autoBackupPath != null
-                                ? 'Change Folder'
-                                : 'Set Folder'),
-                          ),
-                        ],
-                      ),
-                    ],
-                  ),
-                ),
+                            fontSize: 15,
+                            fontWeight: FontWeight.w700,
+                            color: AppColors.textSecondary,
+                            letterSpacing: 0.5)),
+                    const SizedBox(height: 12),
 
-                const SizedBox(height: 36),
-                Text('Manual Actions',
-                    style: GoogleFonts.inter(
-                        fontSize: 15,
-                        fontWeight: FontWeight.w700,
-                        color: AppColors.textSecondary,
-                        letterSpacing: 0.5)),
-                const SizedBox(height: 12),
+                    // ─── Export ───
+                    _ActionCard(
+                      icon: Icons.upload_file_rounded,
+                      iconColor: AppColors.info,
+                      title: 'Export Backup',
+                      subtitle:
+                          'Save a copy of your database to your PC or Cloud folder.',
+                      onTap: _isProcessing ? null : _exportBackup,
+                    ),
+                    const SizedBox(height: 12),
+                    _ActionCard(
+                      icon: Icons.table_view_rounded,
+                      iconColor: AppColors.accent,
+                      title: 'Export CSV',
+                      subtitle:
+                          'Create a portable spreadsheet snapshot of transactions, expenses, and ledger entries.',
+                      onTap: _isProcessing ? null : _exportCsvSnapshot,
+                    ),
+                    const SizedBox(height: 12),
 
-                // ─── Export ───
-                _ActionCard(
-                  icon: Icons.upload_file_rounded,
-                  iconColor: AppColors.info,
-                  title: 'Export Backup',
-                  subtitle:
-                      'Save a copy of your database to your PC or Cloud folder.',
-                  onTap: _isProcessing ? null : _exportBackup,
+                    // ─── Restore ───
+                    _ActionCard(
+                      icon: Icons.restore_rounded,
+                      iconColor: AppColors.warning,
+                      title: 'Restore Backup',
+                      subtitle:
+                          'Replace your current database with a saved backup file.',
+                      onTap: _isProcessing ? null : _restoreBackup,
+                    ),
+                  ],
                 ),
-                const SizedBox(height: 12),
-                _ActionCard(
-                  icon: Icons.table_view_rounded,
-                  iconColor: AppColors.accent,
-                  title: 'Export CSV',
-                  subtitle:
-                      'Create a portable spreadsheet snapshot of transactions, expenses, and ledger entries.',
-                  onTap: _isProcessing ? null : _exportCsvSnapshot,
+              ),
+              if (_isProcessing)
+                Container(
+                  color: Colors.black38,
+                  child: const Center(child: CircularProgressIndicator()),
                 ),
-                const SizedBox(height: 12),
-
-                // ─── Restore ───
-                _ActionCard(
-                  icon: Icons.restore_rounded,
-                  iconColor: AppColors.warning,
-                  title: 'Restore Backup',
-                  subtitle:
-                      'Replace your current database with a saved backup file.',
-                  onTap: _isProcessing ? null : _restoreBackup,
-                ),
-              ],
-            ),
+            ],
           ),
-          if (_isProcessing)
-            Container(
-              color: Colors.black38,
-              child: const Center(child: CircularProgressIndicator()),
-            ),
-        ],
-      ),
-    );
+        ));
   }
 }
 

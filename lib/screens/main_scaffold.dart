@@ -3,6 +3,7 @@ import 'package:go_router/go_router.dart';
 import 'package:google_fonts/google_fonts.dart';
 import '../main.dart';
 import '../widgets/hisaab_logo.dart';
+import '../services/session_service.dart';
 
 class MainScaffold extends StatelessWidget {
   final Widget child;
@@ -17,6 +18,9 @@ class MainScaffold extends StatelessWidget {
       builder: (context, constraints) {
         if (constraints.maxWidth < 600) {
           return Scaffold(
+            appBar: AppBar(title: Text(SessionService.instance.current?.name ?? 'HISAAB'),
+              actions: [IconButton(tooltip: 'Profiles', icon: const Icon(Icons.manage_accounts),
+                  onPressed: () => context.push('/profiles'))]),
             body: child,
             bottomNavigationBar: _BottomNav(
               selectedIndex: selectedIndex,
@@ -127,6 +131,13 @@ class MainScaffold extends StatelessWidget {
             onTap: () => context.go('/reports'),
           ),
           const Spacer(),
+          _NavItem(
+            icon: Icons.manage_accounts,
+            label: SessionService.instance.current?.name ?? 'Profiles',
+            isSelected: false,
+            collapsed: collapsed,
+            onTap: () => context.push('/profiles'),
+          ),
           Divider(color: Colors.white.withOpacity(0.1), height: 1),
           _NavItem(
             icon: Icons.cloud_sync_rounded,

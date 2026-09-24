@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'save_entry.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
 import 'package:google_fonts/google_fonts.dart';
@@ -61,6 +62,7 @@ class _AddExpenseDialogState extends ConsumerState<AddExpenseDialog> {
   }
 
   void _saveExpense() async {
+    if (_isSaving) return;
     if (!_formKey.currentState!.validate() || _selectedCategory == null) return;
     setState(() => _isSaving = true);
 
@@ -75,14 +77,20 @@ class _AddExpenseDialogState extends ConsumerState<AddExpenseDialog> {
       item: _itemCtrl.text.trim().isNotEmpty ? _itemCtrl.text.trim() : null,
       paymentMethod: _paymentMethod,
       note: _noteCtrl.text.trim().isNotEmpty ? _noteCtrl.text.trim() : null,
+      staffName: widget.existingExpense?.staffName,
     );
 
-    if (widget.existingExpense != null) {
-      await ref.read(expensesProvider.notifier).updateExpense(expense);
-    } else {
-      await ref.read(expensesProvider.notifier).addExpense(expense);
-    }
-    if (mounted) Navigator.of(context).pop();
+    final saved = await saveEntry(context, (allowDuplicate) async {
+      final notifier = ref.read(expensesProvider.notifier);
+      if (widget.existingExpense != null) {
+        await notifier.updateExpense(expense, allowDuplicate: allowDuplicate);
+      } else {
+        await notifier.addExpense(expense, allowDuplicate: allowDuplicate);
+      }
+    });
+    if (!mounted) return;
+    setState(() => _isSaving = false);
+    if (saved) Navigator.of(context).pop();
   }
 
   List<String> _uniqueSortedValues(Iterable<String?> rawValues) {

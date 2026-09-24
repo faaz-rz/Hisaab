@@ -1,0 +1,194 @@
+import 'dart:io';
+import 'package:flutter_test/flutter_test.dart';
+import 'package:pharmacy_management/models/transaction_model.dart';
+import 'package:pharmacy_management/models/expense.dart';
+import 'package:pharmacy_management/models/bank_ledger.dart';
+import 'package:pharmacy_management/services/database_service.dart';
+import 'package:pharmacy_management/services/entry_service.dart';
+import 'package:sqflite_common_ffi/sqflite_ffi.dart';
+
+void main() {
+  late Directory directory;
+  late DatabaseService service;
+  late Database db;
+  setUp(() async {
+    directory = await Directory.systemTemp.createTemp('hisaab-entry-test-');
+    service = DatabaseService.forTesting(directory.path);
+    db = await service.database;
+  });
+  tearDown(() async {
+    await service.close();
+    await directory.delete(recursive: true);
+  });
+
+  Map<String, dynamic> sale(String date, {int? id, double amount = 100}) =>
+      TransactionModel(id: id, type: 'sale', date: date, totalAmount: amount)
+          .toMap();
+
+  test('duplicate on same displayed date is rejected without changing rows',
+      () async {
+    await EntryService.save(db, 'transactions', sale('2026-09-24T09:00:00'));
+    await expectLater(
+        EntryService.save(db, 'transactions', sale('2026-09-24T18:00:00')),
+        throwsA(isA<DuplicateEntryException>()));
+    expect((await db.query('transactions')).length, 1);
+    await EntryService.save(db, 'transactions', sale('2026-09-25T09:00:00'));
+    expect((await db.query('transactions')).length, 2);
+  });
+  test('editing self succeeds, editing into another record warns', () async {
+    final id = await EntryService.save(db, 'transactions', sale('2026-09-24'));
+    await EntryService.save(db, 'transactions', sale('2026-09-24', id: id));
+    final other =
+        await EntryService.save(db, 'transactions', sale('2026-09-25'));
+    await expectLater(
+        EntryService.save(db, 'transactions', sale('2026-09-24', id: other)),
+        throwsA(isA<DuplicateEntryException>()));
+  });
+  test('explicit confirmation allows a genuine repeated entry', () async {
+    await EntryService.save(db, 'transactions', sale('2026-09-24'));
+    await EntryService.save(db, 'transactions', sale('2026-09-24'),
+        allowDuplicate: true);
+    expect((await db.query('transactions')).length, 2);
+  });
+  test('concurrent duplicate saves leave only one record', () async {
+    final results = await Future.wait(List.generate(2, (_) async {
+      try {
+        await EntryService.save(db, 'transactions', sale('2026-09-24'));
+        return true;
+      } on DuplicateEntryException {
+        return false;
+      }
+    }));
+    expect(results.where((saved) => saved).length, 1);
+    expect((await db.query('transactions')).length, 1);
+  });
+  test('expenses normalize text and retain different amounts', () async {
+    final expense =
+        Expense(categoryId: 1, amount: 50, date: '2026-09-24', item: 'Paper');
+    await EntryService.save(db, 'expenses', expense.toMap());
+    await expectLater(
+        EntryService.save(
+            db, 'expenses', {...expense.toMap(), 'item': ' paper '}),
+        throwsA(isA<DuplicateEntryException>()));
+    await EntryService.save(db, 'expenses', {...expense.toMap(), 'amount': 75});
+    expect((await db.query('expenses')).length, 2);
+  });
+  test('ledger duplicate compares bank account, amount and purpose', () async {
+    final entry = BankLedger(
+            type: 'deposit',
+            bankName: 'Bank',
+            accountNo: '123',
+            amount: 50,
+            date: '2026-09-24')
+        .toMap();
+    await EntryService.save(db, 'bank_ledger', entry);
+    await expectLater(EntryService.save(db, 'bank_ledger', entry),
+        throwsA(isA<DuplicateEntryException>()));
+    await EntryService.save(db, 'bank_ledger', {...entry, 'account_no': '456'});
+  });
+  test('duplicate payment never increments balance twice', () async {
+    final bill = await EntryService.save(
+        db,
+        'transactions',
+        TransactionModel(
+                type: 'purchase_credit',
+                date: '2026-09-24',
+                totalAmount: 500,
+                agencyCode: 'A',
+                billNo: 'B1')
+            .toMap());
+    final payment = TransactionModel(
+            type: 'credit_payment',
+            date: '2026-09-24',
+            totalAmount: 100,
+            agencyCode: 'A',
+            originalBillNo: 'B1')
+        .toMap();
+    await EntryService.save(db, 'transactions', payment, linkedBillId: bill);
+    await expectLater(
+        EntryService.save(db, 'transactions', payment, linkedBillId: bill),
+        throwsA(isA<DuplicateEntryException>()));
+    expect(
+        (await db.query('transactions', where: 'id = ?', whereArgs: [bill]))
+            .single['paid_amount'],
+        100);
+    await expectLater(
+        EntryService.save(db, 'transactions', {...payment, 'total_amount': 450},
+            linkedBillId: bill),
+        throwsA(isA<EntrySaveException>()));
+    expect((await db.query('transactions')).length, 2);
+  });
+  test('failed payment insert rolls back bill update', () async {
+    final bill = await EntryService.save(
+        db,
+        'transactions',
+        TransactionModel(
+                type: 'purchase_credit', date: '2026-09-24', totalAmount: 500)
+            .toMap());
+    await expectLater(
+        EntryService.save(
+            db,
+            'transactions',
+            {
+              'type': 'credit_payment',
+              'total_amount': 100,
+              'date': null,
+            },
+            linkedBillId: bill),
+        throwsA(isA<DatabaseException>()));
+    expect((await db.query('transactions')).single['paid_amount'], 0);
+  });
+  test('editing a purchase cannot reset an existing paid balance', () async {
+    final original = TransactionModel(
+            type: 'purchase_credit',
+            date: '2026-09-24',
+            totalAmount: 500,
+            paidAmount: 200)
+        .toMap();
+    final id = await EntryService.save(db, 'transactions', original);
+    await EntryService.save(db, 'transactions',
+        {...original, 'id': id, 'paid_amount': 0, 'total_amount': 600});
+    final row = (await db.query('transactions')).single;
+    expect(row['paid_amount'], 200);
+    expect(row['total_amount'], 600);
+  });
+  test('backup is complete and leaves current database usable', () async {
+    await db.execute('PRAGMA journal_mode=WAL');
+    await EntryService.save(db, 'transactions', sale('2026-09-24'));
+    final path = '${directory.path}/backup.db';
+    await service.copyDatabaseTo(path);
+    await EntryService.save(db, 'transactions', sale('2026-09-25'));
+    expect((await db.query('transactions')).length, 2);
+    final backup = await databaseFactoryFfi.openDatabase(path,
+        options: OpenDatabaseOptions(readOnly: true));
+    expect((await backup.query('transactions')).length, 1);
+    await backup.close();
+  });
+  test('upgrade backup and repeated opens preserve all existing records',
+      () async {
+    await db.execute('PRAGMA journal_mode=WAL');
+    await EntryService.save(db, 'transactions', sale('2026-09-24'));
+    await db.insert('expenses',
+        Expense(categoryId: 1, amount: 75, date: '2026-09-24').toMap());
+    final before = await db.query('transactions');
+    final expenses = await db.query('expenses');
+    await service.close();
+    await service.prepareUpgradeBackup();
+    final backupPath =
+        '${await service.getDatabaseFilePath()}.before_multi_user_v1.db';
+    final originalBackup = await File(backupPath).readAsBytes();
+    db = await service.database;
+    expect(await db.query('transactions'), before);
+    expect(await db.query('expenses'), expenses);
+    await service.close();
+    await service.prepareUpgradeBackup();
+    expect(await File(backupPath).readAsBytes(), originalBackup);
+    final backup = await databaseFactoryFfi.openDatabase(backupPath,
+        options: OpenDatabaseOptions(readOnly: true));
+    expect(await backup.query('transactions'), before);
+    expect(
+        (await backup.rawQuery('PRAGMA integrity_check')).single.values.single,
+        'ok');
+    await backup.close();
+  });
+}

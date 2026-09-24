@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'save_entry.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
 import 'package:google_fonts/google_fonts.dart';
@@ -163,6 +164,7 @@ class _AddLedgerDialogState extends ConsumerState<AddLedgerDialog> {
   }
 
   void _saveLedgerEntry() async {
+    if (_isSaving) return;
     if (!_formKey.currentState!.validate()) return;
     setState(() => _isSaving = true);
 
@@ -177,19 +179,19 @@ class _AddLedgerDialogState extends ConsumerState<AddLedgerDialog> {
       purpose: _txType == 'withdrawal' ? _purposeCtrl.text : null,
     );
 
-    // Save bank details to registry
-    await BankService.instance.saveBank(
-      _bankNameCtrl.text.trim(),
-      bankCode: _bankCodeCtrl.text.trim(),
-      accountNo: _accountNoCtrl.text.trim(),
-    );
-
-    if (widget.existingEntry != null) {
-      await ref.read(ledgerProvider.notifier).updateLedgerEntry(entry);
-    } else {
-      await ref.read(ledgerProvider.notifier).addLedgerEntry(entry);
-    }
-    if (mounted) Navigator.of(context).pop();
+    final saved = await saveEntry(context, (allowDuplicate) async {
+      final notifier = ref.read(ledgerProvider.notifier);
+      if (widget.existingEntry != null) {
+        await notifier.updateLedgerEntry(entry, allowDuplicate: allowDuplicate);
+      } else {
+        await notifier.addLedgerEntry(entry, allowDuplicate: allowDuplicate);
+      }
+      await BankService.instance.saveBank(entry.bankName,
+          bankCode: entry.bankCode, accountNo: entry.accountNo);
+    });
+    if (!mounted) return;
+    setState(() => _isSaving = false);
+    if (saved) Navigator.of(context).pop();
   }
 
   @override

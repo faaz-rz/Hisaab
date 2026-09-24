@@ -3,6 +3,7 @@ import '../models/expense.dart';
 import '../models/expense_category.dart';
 import '../services/database_service.dart';
 import '../services/cloud_sync_service.dart';
+import '../services/entry_service.dart';
 
 final expenseCategoriesProvider =
     FutureProvider<List<ExpenseCategory>>((ref) async {
@@ -40,17 +41,18 @@ class ExpenseNotifier extends StateNotifier<AsyncValue<List<Expense>>> {
     }
   }
 
-  Future<void> addExpense(Expense expense) async {
+  Future<void> addExpense(Expense expense, {bool allowDuplicate = false}) async {
     final db = await DatabaseService.instance.database;
-    await db.insert('expenses', expense.toMap());
+    await EntryService.save(db, 'expenses', expense.toMap(),
+        allowDuplicate: allowDuplicate);
     await CloudSyncService.instance.pushLocalIfEnabled();
     await loadExpenses();
   }
 
-  Future<void> updateExpense(Expense expense) async {
+  Future<void> updateExpense(Expense expense, {bool allowDuplicate = false}) async {
     final db = await DatabaseService.instance.database;
-    await db.update('expenses', expense.toMap(),
-        where: 'id = ?', whereArgs: [expense.id]);
+    await EntryService.save(db, 'expenses', expense.toMap(),
+        allowDuplicate: allowDuplicate);
     await CloudSyncService.instance.pushLocalIfEnabled();
     await loadExpenses();
   }

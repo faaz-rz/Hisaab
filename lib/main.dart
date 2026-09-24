@@ -6,10 +6,19 @@ import 'services/database_service.dart';
 import 'services/agency_service.dart';
 import 'services/bank_service.dart';
 import 'services/cloud_sync_service.dart';
+import 'services/session_service.dart';
+import 'widgets/profile_gate.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
   GoogleFonts.config.allowRuntimeFetching = false;
+  SessionService.instance.initializeProfile = initializeProfile;
+  runApp(const ProfileGate());
+}
+
+Future<void> initializeProfile() async {
+  // Preserve the installed client's records before opening or syncing them.
+  await DatabaseService.instance.prepareUpgradeBackup();
 
   // Pull or publish the latest cloud copy before opening providers.
   await CloudSyncService.instance.syncOnStartup();
@@ -28,7 +37,6 @@ void main() async {
   // Backfills can create lookup rows, so publish them if cloud sync is enabled.
   await CloudSyncService.instance.pushLocalIfEnabled();
 
-  runApp(const ProviderScope(child: PharmacyApp()));
 }
 
 /// One-time backfill: scan existing transactions for agency_code+agency_name
