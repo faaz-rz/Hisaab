@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../widgets/workspace_components.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../models/transaction_model.dart';
 import '../providers/transaction_provider.dart';
@@ -402,7 +403,9 @@ class _TransactionsScreenState extends ConsumerState<TransactionsScreen>
     return Scaffold(
       backgroundColor: AppColors.surface,
       appBar: AppBar(
-        title: const Text('Transactions'),
+        title: const PageHeading(
+            title: 'Transactions',
+            subtitle: 'Daily sales, purchases & payments'),
         actions: [
           if (_salesAuthenticated)
             IconButton(
@@ -429,11 +432,11 @@ class _TransactionsScreenState extends ConsumerState<TransactionsScreen>
             ),
         ],
         bottom: PreferredSize(
-          preferredSize: const Size.fromHeight(48),
+          preferredSize: const Size.fromHeight(64),
           child: Container(
             margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
             decoration: BoxDecoration(
-              color: Colors.white.withOpacity(0.12),
+              color: AppColors.surface,
               borderRadius: BorderRadius.circular(10),
             ),
             child: TabBar(

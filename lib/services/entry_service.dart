@@ -2,11 +2,12 @@ import 'package:sqflite/sqflite.dart';
 
 class DuplicateEntryException implements Exception {
   final int existingId;
-  const DuplicateEntryException(this.existingId);
+  final String date;
+  const DuplicateEntryException(this.existingId, {required this.date});
 
   @override
-  String toString() => 'An entry with the same details already exists '
-      '(record #$existingId). Check it before saving another copy.';
+  String toString() => 'Sales have already been recorded for $date. '
+      'Open the existing sale and edit the daily amount instead of adding another entry.';
 }
 
 class EntrySaveException implements Exception {
@@ -19,51 +20,7 @@ class EntrySaveException implements Exception {
 /// Checks and writes within one SQLite transaction, including bill settlement.
 /// Existing records are never deduplicated or deleted automatically.
 class EntryService {
-  static const _fields = {
-    'transactions': [
-      'type',
-      'date',
-      'total_amount',
-      'upi_amount',
-      'agency_name',
-      'agency_code',
-      'bill_no',
-      'original_bill_no',
-      'profit',
-      'discount',
-      'adjustment_details',
-      'bill_date',
-      'payment_method',
-      'receipt_no',
-    ],
-    'expenses': [
-      'category_id',
-      'amount',
-      'date',
-      'subcategory',
-      'item',
-      'payment_method',
-      'note',
-      'staff_name',
-    ],
-    'bank_ledger': [
-      'type',
-      'bank_name',
-      'bank_code',
-      'account_no',
-      'amount',
-      'date',
-      'purpose',
-    ],
-  };
-  static const _numbers = {
-    'total_amount',
-    'upi_amount',
-    'profit',
-    'discount',
-    'amount',
-    'category_id',
-  };
+  static const _tables = {'transactions', 'expenses', 'bank_ledger'};
 
   static Future<int> save(
     Database db,
@@ -72,39 +29,31 @@ class EntryService {
     bool allowDuplicate = false,
     int? linkedBillId,
   }) async {
-    final fields = _fields[table];
-    if (fields == null) throw ArgumentError.value(table, 'table');
+    if (!_tables.contains(table)) throw ArgumentError.value(table, 'table');
     final id = values['id'] as int?;
     return db.transaction((txn) async {
-      if (!allowDuplicate) {
-        final clauses = <String>[];
-        final arguments = <Object?>[];
-        for (final field in fields) {
-          final value = values[field];
-          if (_numbers.contains(field)) {
-            clauses.add('COALESCE($field, 0) = ?');
-            arguments.add(value ?? 0);
-          } else if (field == 'date' || field == 'bill_date') {
-            // Entry forms display calendar dates, not the hidden time of day.
-            clauses.add("SUBSTR(COALESCE($field, ''), 1, 10) = ?");
-            final date = (value as String?) ?? '';
-            arguments.add(date.length > 10 ? date.substring(0, 10) : date);
-          } else {
-            clauses.add("LOWER(TRIM(COALESCE($field, ''))) = LOWER(?)");
-            arguments.add((value as String?)?.trim() ?? '');
+      if (table == 'transactions' && values['type'] == 'sale') {
+        final date = (values['date'] as String).substring(0, 10);
+        // An edit on its original day does not introduce another daily sale.
+        // This also keeps old entries editable if a legacy file has duplicates.
+        final original = id == null
+            ? <Map<String, Object?>>[]
+            : await txn.query(table,
+                columns: ['type', 'date'], where: 'id = ?', whereArgs: [id]);
+        final sameDayEdit = original.isNotEmpty &&
+            original.single['type'] == 'sale' &&
+            (original.single['date'] as String).substring(0, 10) == date;
+        if (!sameDayEdit) {
+          final matches = await txn.query(table,
+              columns: ['id'],
+              where:
+                  "type = 'sale' AND SUBSTR(date, 1, 10) = ?${id == null ? '' : ' AND id != ?'}",
+              whereArgs: [date, if (id != null) id],
+              limit: 1);
+          if (matches.isNotEmpty) {
+            throw DuplicateEntryException(matches.single['id'] as int,
+                date: date);
           }
-        }
-        if (id != null) {
-          clauses.add('id != ?');
-          arguments.add(id);
-        }
-        final matches = await txn.query(table,
-            columns: ['id'],
-            where: clauses.join(' AND '),
-            whereArgs: arguments,
-            limit: 1);
-        if (matches.isNotEmpty) {
-          throw DuplicateEntryException(matches.first['id'] as int);
         }
       }
 

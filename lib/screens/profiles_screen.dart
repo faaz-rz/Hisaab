@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../widgets/workspace_components.dart';
 import '../services/account_service.dart';
 import '../services/session_service.dart';
 import 'profile_form.dart';
@@ -33,7 +34,11 @@ class _ProfilesScreenState extends State<ProfilesScreen> {
   Widget build(BuildContext context) {
     final current = SessionService.instance.current;
     return Scaffold(
-      appBar: AppBar(title: const Text('Profiles')),
+      appBar: AppBar(
+          title: const PageHeading(
+              title: 'Profiles',
+              subtitle:
+                  'Your businesses, each with their own private records')),
       body: ListView(padding: const EdgeInsets.all(24), children: [
         Text('Signed in as ${current?.name ?? ''}',
             style: Theme.of(context).textTheme.titleLarge),

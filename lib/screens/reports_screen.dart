@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../widgets/workspace_components.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
 import 'package:google_fonts/google_fonts.dart';
@@ -52,9 +53,11 @@ class _ReportsScreenState extends ConsumerState<ReportsScreen>
     return Scaffold(
       backgroundColor: AppColors.surface,
       appBar: AppBar(
-        title: const Text('Reports'),
+        title: const PageHeading(
+            title: 'Reports',
+            subtitle: 'A clear view of your business performance'),
         bottom: PreferredSize(
-          preferredSize: const Size.fromHeight(48),
+          preferredSize: const Size.fromHeight(64),
           child: Container(
             margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
             child: TabBar(
@@ -136,36 +139,26 @@ class _ReportsScreenState extends ConsumerState<ReportsScreen>
       margin: const EdgeInsets.all(20),
       padding: const EdgeInsets.all(20),
       decoration: BoxDecoration(
-        gradient: LinearGradient(
-          colors: [color, color.withOpacity(0.8)],
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-        ),
-        borderRadius: BorderRadius.circular(16),
+        color: Colors.white,
+        border: Border.all(color: AppColors.divider),
+        borderRadius: BorderRadius.circular(18),
       ),
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-        children: [
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(label,
-                    style: GoogleFonts.inter(
-                        fontSize: 13,
-                        color: Colors.white70,
-                        fontWeight: FontWeight.w500)),
-                const SizedBox(height: 4),
-                Text(value,
-                    style: GoogleFonts.inter(
-                        fontSize: 22,
-                        fontWeight: FontWeight.w800,
-                        color: Colors.white)),
-              ],
-            ),
-          ),
-          if (trailing != null) trailing,
-        ],
+      child: AdaptiveSummaryRow(
+        summary: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(label,
+                style: GoogleFonts.inter(
+                    fontSize: 13,
+                    color: AppColors.textSecondary,
+                    fontWeight: FontWeight.w500)),
+            const SizedBox(height: 4),
+            Text(value,
+                style: GoogleFonts.inter(
+                    fontSize: 26, fontWeight: FontWeight.w700, color: color)),
+          ],
+        ),
+        actions: trailing ?? const SizedBox.shrink(),
       ),
     );
   }
@@ -202,8 +195,8 @@ class _ReportsScreenState extends ConsumerState<ReportsScreen>
       icon: Icon(icon, size: 18),
       label: Text(label),
       style: ElevatedButton.styleFrom(
-        backgroundColor: Colors.white.withOpacity(0.2),
-        foregroundColor: Colors.white,
+        backgroundColor: AppColors.surface,
+        foregroundColor: AppColors.primary,
         elevation: 0,
       ),
     );
@@ -217,19 +210,8 @@ class _ReportsScreenState extends ConsumerState<ReportsScreen>
       Color accentColor = AppColors.accent,
       IconData icon = Icons.show_chart_rounded,
       Widget? badge}) {
-    return Container(
+    return Card(
       margin: const EdgeInsets.only(bottom: 10),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(12),
-        border: Border(left: BorderSide(color: accentColor, width: 3)),
-        boxShadow: [
-          BoxShadow(
-              color: Colors.black.withOpacity(0.02),
-              blurRadius: 6,
-              offset: const Offset(0, 2))
-        ],
-      ),
       child: ListTile(
         contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
         leading: Container(
@@ -668,20 +650,8 @@ class _ReportsScreenState extends ConsumerState<ReportsScreen>
                   final agencyPaid = agencyTxs.fold(
                       0.0, (double s, TransactionModel t) => s + t.paidAmount);
 
-                  return Container(
+                  return Card(
                     margin: const EdgeInsets.only(bottom: 12),
-                    decoration: BoxDecoration(
-                      color: Colors.white,
-                      borderRadius: BorderRadius.circular(12),
-                      border: const Border(
-                          left: BorderSide(color: AppColors.danger, width: 3)),
-                      boxShadow: [
-                        BoxShadow(
-                            color: Colors.black.withOpacity(0.02),
-                            blurRadius: 6,
-                            offset: const Offset(0, 2))
-                      ],
-                    ),
                     child: ExpansionTile(
                       tilePadding: const EdgeInsets.symmetric(
                           horizontal: 16, vertical: 4),
@@ -1094,20 +1064,8 @@ class _ReportsScreenState extends ConsumerState<ReportsScreen>
                       (double s, TransactionModel t) => s + t.remainingAmount);
                   final name = agencyTxs.first.agencyName ?? 'Unknown';
 
-                  return Container(
+                  return Card(
                     margin: const EdgeInsets.only(bottom: 12),
-                    decoration: BoxDecoration(
-                      color: Colors.white,
-                      borderRadius: BorderRadius.circular(12),
-                      border: const Border(
-                          left: BorderSide(color: AppColors.primary, width: 3)),
-                      boxShadow: [
-                        BoxShadow(
-                            color: Colors.black.withOpacity(0.02),
-                            blurRadius: 6,
-                            offset: const Offset(0, 2))
-                      ],
-                    ),
                     child: ListTile(
                       contentPadding: const EdgeInsets.symmetric(
                           horizontal: 16, vertical: 8),

@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../widgets/workspace_components.dart';
 import '../services/profile_scope.dart';
 import 'package:file_picker/file_picker.dart';
 import 'dart:io';
@@ -616,7 +617,9 @@ class _BackupScreenState extends State<BackupScreen> {
         child: Scaffold(
           backgroundColor: AppColors.surface,
           appBar: AppBar(
-            title: const Text('Backup & Sync'),
+            title: const PageHeading(
+                title: 'Backup & Sync',
+                subtitle: 'Protect your records & manage recovery copies'),
             centerTitle: true,
           ),
           body: Stack(

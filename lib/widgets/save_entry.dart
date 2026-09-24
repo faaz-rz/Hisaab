@@ -22,30 +22,20 @@ Future<bool> _saveEntry(BuildContext context,
     return true;
   } on DuplicateEntryException catch (error) {
     if (!context.mounted) return false;
-    final confirmed = await showDialog<bool>(
+    await showDialog<void>(
       context: context,
       builder: (dialogContext) => AlertDialog(
-        title: const Text('Possible duplicate entry'),
-        content: Text(
-            '$error\n\nSave another copy only if this is a separate, genuine entry.'),
+        icon: const Icon(Icons.event_busy_outlined),
+        title: const Text('Sales already recorded for this date'),
+        content: Text(error.toString()),
         actions: [
-          TextButton(
-              onPressed: () => Navigator.pop(dialogContext, false),
-              child: const Text('Go back')),
           FilledButton(
-              onPressed: () => Navigator.pop(dialogContext, true),
-              child: const Text('Save another copy')),
+              onPressed: () => Navigator.pop(dialogContext),
+              child: const Text('Back to sale')),
         ],
       ),
     );
-    if (confirmed != true || !context.mounted) return false;
-    try {
-      await save(true);
-      return true;
-    } catch (error) {
-      if (context.mounted) _showError(context, error);
-      return false;
-    }
+    return false;
   } catch (error) {
     if (context.mounted) _showError(context, error);
     return false;

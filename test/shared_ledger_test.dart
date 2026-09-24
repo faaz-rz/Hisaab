@@ -66,10 +66,8 @@ void main() {
     expect(await (await service.database).query('transactions'), isEmpty);
     expect((await (await service.database).query('expenses')).length, 1);
     shared = await service.ledgerDatabase;
-    await expectLater(
-        EntryService.save(
-            shared, 'bank_ledger', {...entry(7, 100), 'id': null}),
-        throwsA(isA<DuplicateEntryException>()));
+    await EntryService.save(
+        shared, 'bank_ledger', {...entry(7, 100), 'id': null});
     await shared.update('bank_ledger', {'amount': 150},
         where: 'id = ?', whereArgs: [7]);
     await service.selectProfile('primary');
@@ -81,7 +79,7 @@ void main() {
     await shared.delete('bank_ledger', where: 'id = ?', whereArgs: [7]);
     await service.selectProfile(second);
     expect(
-        (await (await service.ledgerDatabase).query('bank_ledger')).length, 2);
+        (await (await service.ledgerDatabase).query('bank_ledger')).length, 3);
   });
 
   test(

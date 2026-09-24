@@ -1,6 +1,14 @@
-# HISAAB 1.2.1 — new violet-and-gold logo
+# HISAAB 1.3.0 — refreshed workspace and daily sales protection
 
-This version has a distinct violet-and-gold H logo in the app and Windows executable. The app name and data locations are unchanged. Extract to a new folder and create a shortcut to the new HISAAB.exe if your old shortcut still shows the previous icon. All 1.2 profile and shared-ledger features remain included.
+This version refreshes navigation, dashboard metrics, page headings, summaries, tabs and forms while keeping the existing navy-and-teal palette, business fields, reports and actions. The violet-and-gold logo and all profile/shared-ledger features remain included. The app name, database schema and data locations are unchanged by this update.
+
+## Sales-date protection
+
+- Only sales are checked for duplicates: one sales entry per calendar date, per profile, regardless of amount or time of day.
+- If that date already has a sale, the app shows a message and keeps the form contents. Cancel and edit the existing sale, or choose another date. There is no override to create a second daily sale.
+- Editing a sale on its original date remains allowed. Changing it to an occupied date is blocked.
+- Existing historical same-day records are preserved and remain editable; this update never automatically deletes or merges them.
+- Purchases, payments, credit notes, expenses and bank-ledger entries no longer show duplicate warnings. Payment balance safeguards remain in place.
 
 ## Safe Windows update
 
@@ -16,7 +24,7 @@ This version has a distinct violet-and-gold H logo in the app and Windows execut
 - **Shared:** bank ledger, bank-account registry, and the original first profile's Bank Ledger section password. Additions, edits and deletions are visible from every profile. The Bank Ledger screen is labelled Shared.
 - **Private:** sales, purchases, credit payments, returns, expenses, agency lists, reports based on private transactions, Sales section password, and each profile's backup-folder settings.
 - The existing Bank Ledger section password is separate from the optional profile login password. When already configured, use the original first profile's ledger password from either profile.
-- Existing ledger entries are not silently deduplicated during migration; identical records from different profiles are preserved. Review any historical duplicates yourself. New duplicate entries still trigger the confirmation warning across the common ledger.
+- Existing ledger entries are not silently deduplicated during migration; identical records from different profiles are preserved. Review any historical duplicates yourself. Repeated bank-ledger entries are allowed without a duplicate warning.
 
 ## Login and photos
 

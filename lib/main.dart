@@ -8,6 +8,7 @@ import 'services/bank_service.dart';
 import 'services/cloud_sync_service.dart';
 import 'services/session_service.dart';
 import 'widgets/profile_gate.dart';
+import 'theme/app_theme.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -100,7 +101,6 @@ class PharmacyApp extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final router = ref.watch(routerProvider);
-    final textTheme = GoogleFonts.interTextTheme();
 
     return MaterialApp.router(
       title: 'HISAAB',
@@ -113,137 +113,7 @@ class PharmacyApp extends ConsumerWidget {
         builder: (context, opacity, _) =>
             Opacity(opacity: opacity, child: child),
       ),
-      theme: ThemeData(
-        useMaterial3: true,
-        brightness: Brightness.light,
-        textTheme: textTheme,
-        colorScheme: ColorScheme.fromSeed(
-          seedColor: AppColors.primary,
-          primary: AppColors.primary,
-          secondary: AppColors.accent,
-          tertiary: AppColors.accentLight,
-          surface: AppColors.surface,
-        ),
-        scaffoldBackgroundColor: AppColors.surface,
-        appBarTheme: AppBarTheme(
-          backgroundColor: AppColors.primary,
-          foregroundColor: Colors.white,
-          elevation: 0,
-          centerTitle: false,
-          titleTextStyle: GoogleFonts.inter(
-            fontSize: 18,
-            fontWeight: FontWeight.w600,
-            color: Colors.white,
-          ),
-        ),
-        cardTheme: CardThemeData(
-          elevation: 0,
-          color: AppColors.cardBg,
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(16),
-            side: BorderSide(color: AppColors.divider.withOpacity(0.5)),
-          ),
-          margin: EdgeInsets.zero,
-        ),
-        inputDecorationTheme: InputDecorationTheme(
-          filled: true,
-          fillColor: AppColors.surface,
-          contentPadding:
-              const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
-          border: OutlineInputBorder(
-            borderRadius: BorderRadius.circular(12),
-            borderSide: const BorderSide(color: AppColors.divider),
-          ),
-          enabledBorder: OutlineInputBorder(
-            borderRadius: BorderRadius.circular(12),
-            borderSide: const BorderSide(color: AppColors.divider),
-          ),
-          focusedBorder: OutlineInputBorder(
-            borderRadius: BorderRadius.circular(12),
-            borderSide: const BorderSide(color: AppColors.accent, width: 2),
-          ),
-          labelStyle:
-              GoogleFonts.inter(color: AppColors.textSecondary, fontSize: 14),
-          hintStyle: GoogleFonts.inter(
-              color: AppColors.textSecondary.withOpacity(0.6)),
-        ),
-        elevatedButtonTheme: ElevatedButtonThemeData(
-          style: ElevatedButton.styleFrom(
-            backgroundColor: AppColors.accent,
-            foregroundColor: Colors.white,
-            elevation: 0,
-            padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
-            shape:
-                RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-            textStyle:
-                GoogleFonts.inter(fontWeight: FontWeight.w600, fontSize: 14),
-          ),
-        ),
-        filledButtonTheme: FilledButtonThemeData(
-          style: FilledButton.styleFrom(
-            backgroundColor: AppColors.primary,
-            foregroundColor: Colors.white,
-            padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 14),
-            shape:
-                RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-            textStyle:
-                GoogleFonts.inter(fontWeight: FontWeight.w600, fontSize: 14),
-          ),
-        ),
-        textButtonTheme: TextButtonThemeData(
-          style: TextButton.styleFrom(
-            foregroundColor: AppColors.textSecondary,
-            textStyle: GoogleFonts.inter(fontWeight: FontWeight.w500),
-          ),
-        ),
-        floatingActionButtonTheme: FloatingActionButtonThemeData(
-          backgroundColor: AppColors.accent,
-          foregroundColor: Colors.white,
-          elevation: 4,
-          shape:
-              RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-        ),
-        tabBarTheme: TabBarThemeData(
-          labelColor: Colors.white,
-          unselectedLabelColor: Colors.white60,
-          indicatorSize: TabBarIndicatorSize.tab,
-          indicator: BoxDecoration(
-            borderRadius: BorderRadius.circular(8),
-            color: Colors.white.withOpacity(0.15),
-          ),
-          labelStyle:
-              GoogleFonts.inter(fontWeight: FontWeight.w600, fontSize: 13),
-          unselectedLabelStyle:
-              GoogleFonts.inter(fontWeight: FontWeight.w400, fontSize: 13),
-        ),
-        dividerTheme: const DividerThemeData(
-          color: AppColors.divider,
-          thickness: 1,
-          space: 0,
-        ),
-        dialogTheme: DialogThemeData(
-          shape:
-              RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-          elevation: 8,
-          titleTextStyle: GoogleFonts.inter(
-            fontSize: 20,
-            fontWeight: FontWeight.w700,
-            color: AppColors.textPrimary,
-          ),
-        ),
-        chipTheme: ChipThemeData(
-          shape:
-              RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-          side: BorderSide.none,
-          labelStyle:
-              GoogleFonts.inter(fontSize: 12, fontWeight: FontWeight.w600),
-        ),
-        popupMenuTheme: PopupMenuThemeData(
-          shape:
-              RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-          elevation: 8,
-        ),
-      ),
+      theme: buildAppTheme(),
       routerConfig: router,
     );
   }

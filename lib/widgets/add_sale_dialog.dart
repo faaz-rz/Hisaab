@@ -34,7 +34,9 @@ class _AddSaleDialogState extends ConsumerState<AddSaleDialog> {
       _salesCtrl.text = total > 0 ? total.toString() : '';
       _upiCtrl.text = upi > 0 ? upi.toString() : '';
       _profitCtrl.text = widget.existingTx!.profit?.toString() ?? '';
-      try { _entryDate = DateTime.parse(widget.existingTx!.date); } catch (_) {}
+      try {
+        _entryDate = DateTime.parse(widget.existingTx!.date);
+      } catch (_) {}
     }
   }
 
@@ -106,18 +108,26 @@ class _AddSaleDialogState extends ConsumerState<AddSaleDialog> {
                           color: AppColors.success.withOpacity(0.1),
                           borderRadius: BorderRadius.circular(12),
                         ),
-                        child: const Icon(Icons.point_of_sale_rounded, color: AppColors.success, size: 22),
+                        child: const Icon(Icons.point_of_sale_rounded,
+                            color: AppColors.success, size: 22),
                       ),
                       const SizedBox(width: 14),
-                      Text(
-                        widget.existingTx != null ? 'Edit Sale' : 'Add Daily Sale',
-                        style: GoogleFonts.inter(fontSize: 20, fontWeight: FontWeight.w700, color: AppColors.textPrimary),
-                      ),
-                      const Spacer(),
+                      Expanded(
+                          child: Text(
+                        widget.existingTx != null
+                            ? 'Edit Sale'
+                            : 'Add Daily Sale',
+                        style: GoogleFonts.inter(
+                            fontSize: 20,
+                            fontWeight: FontWeight.w700,
+                            color: AppColors.textPrimary),
+                      )),
                       IconButton(
                         onPressed: () => Navigator.of(context).pop(),
-                        icon: const Icon(Icons.close_rounded, color: AppColors.textSecondary),
-                        style: IconButton.styleFrom(backgroundColor: AppColors.surface),
+                        icon: const Icon(Icons.close_rounded,
+                            color: AppColors.textSecondary),
+                        style: IconButton.styleFrom(
+                            backgroundColor: AppColors.surface),
                       ),
                     ],
                   ),
@@ -138,7 +148,8 @@ class _AddSaleDialogState extends ConsumerState<AddSaleDialog> {
                     },
                     borderRadius: BorderRadius.circular(12),
                     child: Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 16, vertical: 14),
                       decoration: BoxDecoration(
                         color: AppColors.surface,
                         borderRadius: BorderRadius.circular(12),
@@ -146,24 +157,35 @@ class _AddSaleDialogState extends ConsumerState<AddSaleDialog> {
                       ),
                       child: Row(
                         children: [
-                          const Icon(Icons.calendar_today_rounded, size: 18, color: AppColors.accent),
+                          const Icon(Icons.calendar_today_rounded,
+                              size: 18, color: AppColors.accent),
                           const SizedBox(width: 12),
-                          Text(
+                          Expanded(
+                              child: Text(
                             DateFormat('EEEE, MMM dd, yyyy').format(_entryDate),
-                            style: GoogleFonts.inter(fontSize: 14, fontWeight: FontWeight.w500, color: AppColors.textPrimary),
-                          ),
-                          const Spacer(),
-                          const Icon(Icons.edit_rounded, size: 16, color: AppColors.textSecondary),
+                            style: GoogleFonts.inter(
+                                fontSize: 14,
+                                fontWeight: FontWeight.w500,
+                                color: AppColors.textPrimary),
+                          )),
+                          const Icon(Icons.edit_rounded,
+                              size: 16, color: AppColors.textSecondary),
                         ],
                       ),
                     ),
                   ),
-                  const SizedBox(height: 20),
+                  Padding(
+                    padding: const EdgeInsets.only(top: 10, bottom: 24),
+                    child: Text(
+                        'One sales entry per day, per profile. To change a recorded amount, edit the existing sale.',
+                        style: Theme.of(context).textTheme.bodySmall),
+                  ),
 
                   // ─── Sales Amount ───
                   TextFormField(
                     controller: _salesCtrl,
-                    decoration: const InputDecoration(labelText: 'Sales Amount', prefixText: '₹ '),
+                    decoration: const InputDecoration(
+                        labelText: 'Sales Amount', prefixText: '₹ '),
                     keyboardType: TextInputType.number,
                     validator: (val) {
                       if (val == null || val.isEmpty) return 'Required';
@@ -183,14 +205,20 @@ class _AddSaleDialogState extends ConsumerState<AddSaleDialog> {
                     ),
                     keyboardType: TextInputType.number,
                     validator: (val) {
-                      if (val != null && val.isNotEmpty && double.tryParse(val) == null) return 'Invalid Number';
+                      if (val != null &&
+                          val.isNotEmpty &&
+                          double.tryParse(val) == null) return 'Invalid Number';
                       return null;
                     },
                   ),
                   const SizedBox(height: 20),
 
                   // ─── Profit Section ───
-                  Text('Profit', style: GoogleFonts.inter(fontSize: 13, fontWeight: FontWeight.w600, color: AppColors.textSecondary)),
+                  Text('Profit',
+                      style: GoogleFonts.inter(
+                          fontSize: 13,
+                          fontWeight: FontWeight.w600,
+                          color: AppColors.textSecondary)),
                   const SizedBox(height: 10),
                   Row(
                     crossAxisAlignment: CrossAxisAlignment.start,
@@ -206,7 +234,9 @@ class _AddSaleDialogState extends ConsumerState<AddSaleDialog> {
                           keyboardType: TextInputType.number,
                           onChanged: (_) => setState(() {}),
                           validator: (val) {
-                            if (val != null && val.isNotEmpty && double.tryParse(val) == null) return 'Invalid';
+                            if (val != null &&
+                                val.isNotEmpty &&
+                                double.tryParse(val) == null) return 'Invalid';
                             return null;
                           },
                         ),
@@ -222,7 +252,9 @@ class _AddSaleDialogState extends ConsumerState<AddSaleDialog> {
                           ),
                           keyboardType: TextInputType.number,
                           validator: (val) {
-                            if (val != null && val.isNotEmpty && double.tryParse(val) == null) return 'Invalid';
+                            if (val != null &&
+                                val.isNotEmpty &&
+                                double.tryParse(val) == null) return 'Invalid';
                             return null;
                           },
                         ),
@@ -231,7 +263,9 @@ class _AddSaleDialogState extends ConsumerState<AddSaleDialog> {
                   ),
 
                   // Live preview
-                  if (_profitPctCtrl.text.isNotEmpty && _salesCtrl.text.isNotEmpty && _profitCtrl.text.isEmpty)
+                  if (_profitPctCtrl.text.isNotEmpty &&
+                      _salesCtrl.text.isNotEmpty &&
+                      _profitCtrl.text.isEmpty)
                     Padding(
                       padding: const EdgeInsets.only(top: 12),
                       child: Builder(builder: (_) {
@@ -239,19 +273,25 @@ class _AddSaleDialogState extends ConsumerState<AddSaleDialog> {
                         final pct = double.tryParse(_profitPctCtrl.text) ?? 0;
                         final calc = sales * pct / 100;
                         return Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 14, vertical: 10),
                           decoration: BoxDecoration(
                             color: AppColors.success.withOpacity(0.08),
                             borderRadius: BorderRadius.circular(10),
-                            border: Border.all(color: AppColors.success.withOpacity(0.2)),
+                            border: Border.all(
+                                color: AppColors.success.withOpacity(0.2)),
                           ),
                           child: Row(
                             children: [
-                              const Icon(Icons.calculate_rounded, size: 18, color: AppColors.success),
+                              const Icon(Icons.calculate_rounded,
+                                  size: 18, color: AppColors.success),
                               const SizedBox(width: 8),
                               Text(
                                 'Calculated Profit: ₹${calc.toStringAsFixed(2)}',
-                                style: GoogleFonts.inter(fontSize: 13, fontWeight: FontWeight.w600, color: AppColors.success),
+                                style: GoogleFonts.inter(
+                                    fontSize: 13,
+                                    fontWeight: FontWeight.w600,
+                                    color: AppColors.success),
                               ),
                             ],
                           ),
@@ -272,8 +312,15 @@ class _AddSaleDialogState extends ConsumerState<AddSaleDialog> {
                       const SizedBox(width: 12),
                       FilledButton.icon(
                         onPressed: _isSaving ? null : _saveSale,
-                        icon: _isSaving ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white)) : const Icon(Icons.check_rounded, size: 18),
-                        label: Text(widget.existingTx != null ? 'Update' : 'Save Sale'),
+                        icon: _isSaving
+                            ? const SizedBox(
+                                width: 18,
+                                height: 18,
+                                child: CircularProgressIndicator(
+                                    strokeWidth: 2, color: Colors.white))
+                            : const Icon(Icons.check_rounded, size: 18),
+                        label: Text(
+                            widget.existingTx != null ? 'Update' : 'Save Sale'),
                       ),
                     ],
                   ),

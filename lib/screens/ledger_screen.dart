@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../widgets/workspace_components.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
 import 'package:google_fonts/google_fonts.dart';
@@ -32,7 +33,8 @@ class _LedgerScreenState extends ConsumerState<LedgerScreen> {
       return PasswordAuthGate(
         title: 'Bank Ledger',
         createMessage: 'Create one shared ledger password for all profiles',
-        verifyMessage: 'This bank ledger and its password are shared by all profiles',
+        verifyMessage:
+            'This bank ledger and its password are shared by all profiles',
         icon: Icons.shield_rounded,
         isPasswordSet: PasswordService.instance.isLedgerPasswordSet,
         setPassword: PasswordService.instance.setLedgerPassword,
@@ -164,7 +166,9 @@ class _LedgerDashboardState extends ConsumerState<_LedgerDashboard> {
     return Scaffold(
       backgroundColor: AppColors.surface,
       appBar: AppBar(
-        title: const Text('Bank Ledger · Shared'),
+        title: const PageHeading(
+            title: 'Bank Ledger · Shared',
+            subtitle: 'One bank ledger, shared across your profiles'),
         actions: [
           IconButton(
             icon: const Icon(Icons.lock_reset_rounded),
@@ -223,86 +227,26 @@ class _LedgerDashboardState extends ConsumerState<_LedgerDashboard> {
 
           return Column(
             children: [
-              // ─── Summary Header ───
-              Container(
-                margin: const EdgeInsets.all(20),
-                padding: const EdgeInsets.all(24),
-                decoration: BoxDecoration(
-                  gradient: const LinearGradient(
-                    colors: [AppColors.primary, AppColors.primaryLight],
-                    begin: Alignment.topLeft,
-                    end: Alignment.bottomRight,
-                  ),
-                  borderRadius: BorderRadius.circular(16),
-                  boxShadow: [
-                    BoxShadow(
-                      color: AppColors.primary.withOpacity(0.3),
-                      blurRadius: 16,
-                      offset: const Offset(0, 6),
-                    ),
-                  ],
-                ),
-                child: Column(
-                  children: [
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                      children: [
-                        Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text('Total Balance Across All Banks',
-                                style: GoogleFonts.inter(
-                                    fontSize: 12,
-                                    color: Colors.white60,
-                                    fontWeight: FontWeight.w500)),
-                            const SizedBox(height: 6),
-                            Text(
-                              fmt.format(totalBalance),
-                              style: GoogleFonts.inter(
-                                  fontSize: 28,
-                                  fontWeight: FontWeight.w800,
-                                  color: Colors.white),
-                            ),
-                          ],
-                        ),
-                        Container(
-                          padding: const EdgeInsets.all(12),
-                          decoration: BoxDecoration(
-                            color: Colors.white.withOpacity(0.1),
-                            borderRadius: BorderRadius.circular(14),
-                          ),
-                          child: Icon(Icons.account_balance_wallet_rounded,
-                              color: Colors.white.withOpacity(0.8), size: 28),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 20),
-                    Row(
-                      children: [
-                        _SummaryChip(
-                          icon: Icons.arrow_downward_rounded,
-                          label: 'Deposits',
-                          value: fmt.format(totalDeposits),
-                          color: const Color(0xFF34D399),
-                        ),
-                        const SizedBox(width: 12),
-                        _SummaryChip(
-                          icon: Icons.arrow_upward_rounded,
-                          label: 'Withdrawals',
-                          value: fmt.format(totalWithdrawals),
-                          color: const Color(0xFFF87171),
-                        ),
-                        const SizedBox(width: 12),
-                        _SummaryChip(
-                          icon: Icons.account_balance_rounded,
-                          label: 'Banks',
-                          value: '${bankNames.length}',
-                          color: const Color(0xFF60A5FA),
-                        ),
-                      ],
-                    ),
-                  ],
-                ),
+              Padding(
+                padding: const EdgeInsets.all(20),
+                child: MetricGrid(maxColumns: 3, children: [
+                  MetricCard(
+                      label: 'Total Balance Across All Banks',
+                      value: fmt.format(totalBalance),
+                      icon: Icons.account_balance_wallet_outlined,
+                      color: AppColors.accent,
+                      prominent: true),
+                  MetricCard(
+                      label: 'Deposits',
+                      value: fmt.format(totalDeposits),
+                      icon: Icons.south_west_rounded,
+                      color: AppColors.success),
+                  MetricCard(
+                      label: 'Withdrawals',
+                      value: fmt.format(totalWithdrawals),
+                      icon: Icons.north_east_rounded,
+                      color: AppColors.danger),
+                ]),
               ),
 
               // ─── Section Title ───
@@ -400,56 +344,6 @@ class _LedgerDashboardState extends ConsumerState<_LedgerDashboard> {
 }
 
 // ─── Summary chip (inside header) ────────────────────────────
-class _SummaryChip extends StatelessWidget {
-  final IconData icon;
-  final String label;
-  final String value;
-  final Color color;
-
-  const _SummaryChip({
-    required this.icon,
-    required this.label,
-    required this.value,
-    required this.color,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return Expanded(
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-        decoration: BoxDecoration(
-          color: Colors.white.withOpacity(0.08),
-          borderRadius: BorderRadius.circular(12),
-        ),
-        child: Row(
-          children: [
-            Icon(icon, color: color, size: 18),
-            const SizedBox(width: 8),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(label,
-                      style: GoogleFonts.inter(
-                          fontSize: 10,
-                          color: Colors.white54,
-                          fontWeight: FontWeight.w500)),
-                  Text(value,
-                      style: GoogleFonts.inter(
-                          fontSize: 13,
-                          color: Colors.white,
-                          fontWeight: FontWeight.w700),
-                      overflow: TextOverflow.ellipsis),
-                ],
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}
 
 // ─── Bank Card Widget ─────────────────────────────────────────
 class _BankCard extends StatefulWidget {

@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../widgets/workspace_components.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
 import 'package:google_fonts/google_fonts.dart';
@@ -395,7 +396,9 @@ class _ExpensesScreenState extends ConsumerState<ExpensesScreen>
     return Scaffold(
       backgroundColor: AppColors.surface,
       appBar: AppBar(
-        title: const Text('Expenses'),
+        title: const PageHeading(
+            title: 'Expenses',
+            subtitle: 'Track spending, categories & everyday costs'),
         actions: [
           PopupMenuButton<String>(
             icon: const Icon(Icons.tune_rounded),
@@ -447,130 +450,118 @@ class _ExpensesScreenState extends ConsumerState<ExpensesScreen>
                 margin: const EdgeInsets.all(20),
                 padding: const EdgeInsets.all(20),
                 decoration: BoxDecoration(
-                  gradient: LinearGradient(
-                    colors: [
-                      AppColors.danger,
-                      AppColors.danger.withOpacity(0.8)
-                    ],
-                    begin: Alignment.topLeft,
-                    end: Alignment.bottomRight,
-                  ),
-                  borderRadius: BorderRadius.circular(16),
+                  color: Colors.white,
+                  border: Border.all(color: AppColors.divider),
+                  borderRadius: BorderRadius.circular(18),
                 ),
-                child: Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text('Total Expenses',
-                              style: GoogleFonts.inter(
-                                  fontSize: 13,
-                                  color: Colors.white70,
-                                  fontWeight: FontWeight.w500)),
-                          const SizedBox(height: 4),
-                          Text(fmt.format(totalExpenses),
-                              style: GoogleFonts.inter(
-                                  fontSize: 24,
-                                  fontWeight: FontWeight.w800,
-                                  color: Colors.white)),
-                          const SizedBox(height: 2),
-                          Text(_periodLabel(fmtDate),
-                              style: GoogleFonts.inter(
-                                  fontSize: 12,
-                                  color: Colors.white70,
-                                  fontWeight: FontWeight.w500)),
-                        ],
+                child: AdaptiveSummaryRow(
+                  summary: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text('Total Expenses',
+                          style: GoogleFonts.inter(
+                              fontSize: 13,
+                              color: AppColors.textSecondary,
+                              fontWeight: FontWeight.w500)),
+                      const SizedBox(height: 4),
+                      Text(fmt.format(totalExpenses),
+                          style: GoogleFonts.inter(
+                              fontSize: 24,
+                              fontWeight: FontWeight.w800,
+                              color: AppColors.danger)),
+                      const SizedBox(height: 2),
+                      Text(_periodLabel(fmtDate),
+                          style: GoogleFonts.inter(
+                              fontSize: 12,
+                              color: AppColors.textSecondary,
+                              fontWeight: FontWeight.w500)),
+                    ],
+                  ),
+                  actions: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      ElevatedButton.icon(
+                        onPressed: () async {
+                          final catsAsyncValue =
+                              ref.read(allExpenseCategoriesProvider);
+                          final cats = catsAsyncValue.valueOrNull ?? [];
+                          final data = _expenseExportData(
+                            expenses: expenses,
+                            categories: cats,
+                            fmt: fmt,
+                            fmtDate: fmtDate,
+                          );
+
+                          await PdfService.generateAndPrintPdf(
+                            title: 'Expenses Report',
+                            subtitle: dateRange != null
+                                ? 'From: ${fmtDate.format(dateRange!.start)} To: ${fmtDate.format(dateRange!.end)}'
+                                : 'Up to date',
+                            headers: [
+                              'Date',
+                              'Category',
+                              'Class',
+                              'Item',
+                              'Payment',
+                              'Comments',
+                              'Amount'
+                            ],
+                            data: data,
+                            totalAmountLabel: 'Total Expenses:',
+                            totalAmount: fmt.format(totalExpenses),
+                          );
+                        },
+                        icon:
+                            const Icon(Icons.picture_as_pdf_rounded, size: 18),
+                        label: const Text('PDF'),
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: AppColors.surface,
+                          foregroundColor: AppColors.primary,
+                          elevation: 0,
+                        ),
                       ),
-                    ),
-                    const SizedBox(width: 12),
-                    Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        ElevatedButton.icon(
-                          onPressed: () async {
-                            final catsAsyncValue =
-                                ref.read(allExpenseCategoriesProvider);
-                            final cats = catsAsyncValue.valueOrNull ?? [];
-                            final data = _expenseExportData(
-                              expenses: expenses,
-                              categories: cats,
-                              fmt: fmt,
-                              fmtDate: fmtDate,
-                            );
+                      const SizedBox(width: 8),
+                      ElevatedButton.icon(
+                        onPressed: () async {
+                          final catsAsyncValue =
+                              ref.read(allExpenseCategoriesProvider);
+                          final cats = catsAsyncValue.valueOrNull ?? [];
+                          final data = _expenseExportData(
+                            expenses: expenses,
+                            categories: cats,
+                            fmt: fmt,
+                            fmtDate: fmtDate,
+                          );
 
-                            await PdfService.generateAndPrintPdf(
-                              title: 'Expenses Report',
-                              subtitle: dateRange != null
-                                  ? 'From: ${fmtDate.format(dateRange!.start)} To: ${fmtDate.format(dateRange!.end)}'
-                                  : 'Up to date',
-                              headers: [
-                                'Date',
-                                'Category',
-                                'Class',
-                                'Item',
-                                'Payment',
-                                'Comments',
-                                'Amount'
-                              ],
-                              data: data,
-                              totalAmountLabel: 'Total Expenses:',
-                              totalAmount: fmt.format(totalExpenses),
-                            );
-                          },
-                          icon: const Icon(Icons.picture_as_pdf_rounded,
-                              size: 18),
-                          label: const Text('PDF'),
-                          style: ElevatedButton.styleFrom(
-                            backgroundColor: Colors.white.withOpacity(0.2),
-                            foregroundColor: Colors.white,
-                            elevation: 0,
-                          ),
+                          await CsvExportService.generateAndOpenCsv(
+                            title: 'Expenses Report',
+                            subtitle: dateRange != null
+                                ? 'From: ${fmtDate.format(dateRange!.start)} To: ${fmtDate.format(dateRange!.end)}'
+                                : 'Up to date',
+                            headers: [
+                              'Date',
+                              'Category',
+                              'Class',
+                              'Item',
+                              'Payment',
+                              'Comments',
+                              'Amount'
+                            ],
+                            data: data,
+                            totalAmountLabel: 'Total Expenses:',
+                            totalAmount: fmt.format(totalExpenses),
+                          );
+                        },
+                        icon: const Icon(Icons.table_view_rounded, size: 18),
+                        label: const Text('CSV'),
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: AppColors.surface,
+                          foregroundColor: AppColors.primary,
+                          elevation: 0,
                         ),
-                        const SizedBox(width: 8),
-                        ElevatedButton.icon(
-                          onPressed: () async {
-                            final catsAsyncValue =
-                                ref.read(allExpenseCategoriesProvider);
-                            final cats = catsAsyncValue.valueOrNull ?? [];
-                            final data = _expenseExportData(
-                              expenses: expenses,
-                              categories: cats,
-                              fmt: fmt,
-                              fmtDate: fmtDate,
-                            );
-
-                            await CsvExportService.generateAndOpenCsv(
-                              title: 'Expenses Report',
-                              subtitle: dateRange != null
-                                  ? 'From: ${fmtDate.format(dateRange!.start)} To: ${fmtDate.format(dateRange!.end)}'
-                                  : 'Up to date',
-                              headers: [
-                                'Date',
-                                'Category',
-                                'Class',
-                                'Item',
-                                'Payment',
-                                'Comments',
-                                'Amount'
-                              ],
-                              data: data,
-                              totalAmountLabel: 'Total Expenses:',
-                              totalAmount: fmt.format(totalExpenses),
-                            );
-                          },
-                          icon: const Icon(Icons.table_view_rounded, size: 18),
-                          label: const Text('CSV'),
-                          style: ElevatedButton.styleFrom(
-                            backgroundColor: Colors.white.withOpacity(0.2),
-                            foregroundColor: Colors.white,
-                            elevation: 0,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ],
+                      ),
+                    ],
+                  ),
                 ),
               ),
               Padding(

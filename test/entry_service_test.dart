@@ -29,7 +29,8 @@ void main() {
       () async {
     await EntryService.save(db, 'transactions', sale('2026-09-24T09:00:00'));
     await expectLater(
-        EntryService.save(db, 'transactions', sale('2026-09-24T18:00:00')),
+        EntryService.save(
+            db, 'transactions', sale('2026-09-24T18:00:00', amount: 750)),
         throwsA(isA<DuplicateEntryException>()));
     expect((await db.query('transactions')).length, 1);
     await EntryService.save(db, 'transactions', sale('2026-09-25T09:00:00'));
@@ -44,11 +45,24 @@ void main() {
         EntryService.save(db, 'transactions', sale('2026-09-24', id: other)),
         throwsA(isA<DuplicateEntryException>()));
   });
-  test('explicit confirmation allows a genuine repeated entry', () async {
+  test('sales date protection cannot be bypassed', () async {
     await EntryService.save(db, 'transactions', sale('2026-09-24'));
-    await EntryService.save(db, 'transactions', sale('2026-09-24'),
-        allowDuplicate: true);
-    expect((await db.query('transactions')).length, 2);
+    await expectLater(
+        EntryService.save(db, 'transactions', sale('2026-09-24'),
+            allowDuplicate: true),
+        throwsA(isA<DuplicateEntryException>()));
+    expect((await db.query('transactions')).length, 1);
+  });
+  test('historical same-day sales remain intact and editable', () async {
+    final first =
+        await db.insert('transactions', sale('2026-09-24', amount: 100));
+    await db.insert('transactions', sale('2026-09-24', amount: 200));
+    await EntryService.save(
+        db, 'transactions', sale('2026-09-24', id: first, amount: 150));
+    expect(
+        (await db.query('transactions', orderBy: 'id'))
+            .map((row) => row['total_amount']),
+        [150, 200]);
   });
   test('concurrent duplicate saves leave only one record', () async {
     final results = await Future.wait(List.generate(2, (_) async {
@@ -62,18 +76,15 @@ void main() {
     expect(results.where((saved) => saved).length, 1);
     expect((await db.query('transactions')).length, 1);
   });
-  test('expenses normalize text and retain different amounts', () async {
+  test('identical expenses are allowed', () async {
     final expense =
         Expense(categoryId: 1, amount: 50, date: '2026-09-24', item: 'Paper');
     await EntryService.save(db, 'expenses', expense.toMap());
-    await expectLater(
-        EntryService.save(
-            db, 'expenses', {...expense.toMap(), 'item': ' paper '}),
-        throwsA(isA<DuplicateEntryException>()));
+    await EntryService.save(db, 'expenses', expense.toMap());
     await EntryService.save(db, 'expenses', {...expense.toMap(), 'amount': 75});
-    expect((await db.query('expenses')).length, 2);
+    expect((await db.query('expenses')).length, 3);
   });
-  test('ledger duplicate compares bank account, amount and purpose', () async {
+  test('identical bank ledger entries are allowed', () async {
     final entry = BankLedger(
             type: 'deposit',
             bankName: 'Bank',
@@ -82,11 +93,11 @@ void main() {
             date: '2026-09-24')
         .toMap();
     await EntryService.save(db, 'bank_ledger', entry);
-    await expectLater(EntryService.save(db, 'bank_ledger', entry),
-        throwsA(isA<DuplicateEntryException>()));
+    await EntryService.save(db, 'bank_ledger', entry);
     await EntryService.save(db, 'bank_ledger', {...entry, 'account_no': '456'});
   });
-  test('duplicate payment never increments balance twice', () async {
+  test('repeated payments are allowed but cannot exceed the bill balance',
+      () async {
     final bill = await EntryService.save(
         db,
         'transactions',
@@ -105,18 +116,16 @@ void main() {
             originalBillNo: 'B1')
         .toMap();
     await EntryService.save(db, 'transactions', payment, linkedBillId: bill);
-    await expectLater(
-        EntryService.save(db, 'transactions', payment, linkedBillId: bill),
-        throwsA(isA<DuplicateEntryException>()));
+    await EntryService.save(db, 'transactions', payment, linkedBillId: bill);
     expect(
         (await db.query('transactions', where: 'id = ?', whereArgs: [bill]))
             .single['paid_amount'],
-        100);
+        200);
     await expectLater(
         EntryService.save(db, 'transactions', {...payment, 'total_amount': 450},
             linkedBillId: bill),
         throwsA(isA<EntrySaveException>()));
-    expect((await db.query('transactions')).length, 2);
+    expect((await db.query('transactions')).length, 3);
   });
   test('failed payment insert rolls back bill update', () async {
     final bill = await EntryService.save(
