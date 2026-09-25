@@ -250,8 +250,10 @@ class _AddPurchaseDialogState extends ConsumerState<AddPurchaseDialog> {
                       Expanded(
                           child: TextFormField(
                               controller: _billNoCtrl,
-                              decoration:
-                                  const InputDecoration(labelText: 'Bill No'),
+                              decoration: const InputDecoration(
+                                  labelText: 'Bill No',
+                                  helperText: 'Must be unique for this agency',
+                                  helperMaxLines: 2),
                               validator: (val) => (val == null || val.isEmpty)
                                   ? 'Required'
                                   : null)),

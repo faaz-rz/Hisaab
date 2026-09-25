@@ -1,14 +1,20 @@
-# HISAAB 1.3.0 — refreshed workspace and daily sales protection
+# HISAAB 1.3.1 — purchase bill-number protection
 
 This version refreshes navigation, dashboard metrics, page headings, summaries, tabs and forms while keeping the existing navy-and-teal palette, business fields, reports and actions. The violet-and-gold logo and all profile/shared-ledger features remain included. The app name, database schema and data locations are unchanged by this update.
 
 ## Sales-date protection
 
-- Only sales are checked for duplicates: one sales entry per calendar date, per profile, regardless of amount or time of day.
+- Sales are checked by date: one sales entry per calendar date, per profile, regardless of amount or time of day.
 - If that date already has a sale, the app shows a message and keeps the form contents. Cancel and edit the existing sale, or choose another date. There is no override to create a second daily sale.
 - Editing a sale on its original date remains allowed. Changing it to an occupied date is blocked.
 - Existing historical same-day records are preserved and remain editable; this update never automatically deletes or merges them.
-- Purchases, payments, credit notes, expenses and bank-ledger entries no longer show duplicate warnings. Payment balance safeguards remain in place.
+- Payments, credit notes, expenses and bank-ledger entries do not show duplicate warnings. Payment balance safeguards remain in place.
+
+## Purchase bill-number protection
+
+Cash and credit purchases now share a duplicate check for the same agency and bill number within each profile, regardless of date or amount. Agency codes identify the agency when both entries have codes; otherwise matching agency names are used for older records. Comparison ignores letter case and surrounding spaces. Different agencies may use the same bill number. Blank bill numbers are not treated as duplicates.
+
+The warning keeps your form available and prevents another copy from being saved. Edit the original purchase or correct the agency/bill number. Existing records are not deleted or merged, and editing a historical bill without changing its agency/bill-number identity remains possible. Database schema and storage locations are unchanged.
 
 ## Safe Windows update
 

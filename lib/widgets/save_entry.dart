@@ -25,13 +25,15 @@ Future<bool> _saveEntry(BuildContext context,
     await showDialog<void>(
       context: context,
       builder: (dialogContext) => AlertDialog(
-        icon: const Icon(Icons.event_busy_outlined),
-        title: const Text('Sales already recorded for this date'),
+        icon: Icon(error.isPurchase
+            ? Icons.receipt_long_outlined
+            : Icons.event_busy_outlined),
+        title: Text(error.title),
         content: Text(error.toString()),
         actions: [
           FilledButton(
               onPressed: () => Navigator.pop(dialogContext),
-              child: const Text('Back to sale')),
+              child: Text(error.backLabel)),
         ],
       ),
     );

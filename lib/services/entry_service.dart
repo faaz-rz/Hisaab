@@ -2,12 +2,28 @@ import 'package:sqflite/sqflite.dart';
 
 class DuplicateEntryException implements Exception {
   final int existingId;
-  final String date;
-  const DuplicateEntryException(this.existingId, {required this.date});
+  final String? date;
+  final String? billNo;
+  final String? agency;
+  const DuplicateEntryException(this.existingId, {required this.date})
+      : billNo = null,
+        agency = null;
+  const DuplicateEntryException.purchase(this.existingId,
+      {required this.billNo, required this.agency})
+      : date = null;
+
+  bool get isPurchase => billNo != null;
+  String get title => isPurchase
+      ? 'Bill number already recorded for this agency'
+      : 'Sales already recorded for this date';
+  String get backLabel => isPurchase ? 'Back to purchase' : 'Back to sale';
 
   @override
-  String toString() => 'Sales have already been recorded for $date. '
-      'Open the existing sale and edit the daily amount instead of adding another entry.';
+  String toString() => isPurchase
+      ? 'Bill $billNo already exists for $agency in this profile. '
+          'Edit the existing purchase or check the agency and bill number instead of adding it again.'
+      : 'Sales have already been recorded for $date. '
+          'Open the existing sale and edit the daily amount instead of adding another entry.';
 }
 
 class EntrySaveException implements Exception {
@@ -21,6 +37,17 @@ class EntrySaveException implements Exception {
 /// Existing records are never deduplicated or deleted automatically.
 class EntryService {
   static const _tables = {'transactions', 'expenses', 'bank_ledger'};
+  static bool _isPurchase(Object? type) =>
+      type == 'purchase_cash' || type == 'purchase_credit';
+  static String _key(Object? value) =>
+      (value as String? ?? '').trim().toLowerCase();
+  static bool _sameAgency(Map<String, Object?> a, Map<String, Object?> b) {
+    final codeA = _key(a['agency_code']);
+    final codeB = _key(b['agency_code']);
+    if (codeA.isNotEmpty && codeB.isNotEmpty) return codeA == codeB;
+    final name = _key(a['agency_name']);
+    return name.isNotEmpty && name == _key(b['agency_name']);
+  }
 
   static Future<int> save(
     Database db,
@@ -53,6 +80,31 @@ class EntryService {
           if (matches.isNotEmpty) {
             throw DuplicateEntryException(matches.single['id'] as int,
                 date: date);
+          }
+        }
+      }
+
+      if (table == 'transactions' &&
+          _isPurchase(values['type']) &&
+          _key(values['bill_no']).isNotEmpty) {
+        final purchases = await txn.query(table,
+            columns: ['id', 'bill_no', 'agency_code', 'agency_name'],
+            where: "type IN ('purchase_cash', 'purchase_credit')");
+        bool sameBill(Map<String, Object?> row) =>
+            _key(row['bill_no']) == _key(values['bill_no']) &&
+            _sameAgency(row, values);
+        // Preserve editing of historical duplicates without creating another bill.
+        final unchangedKey = id != null &&
+            purchases.any((row) => row['id'] == id && sameBill(row));
+        if (!unchangedKey) {
+          for (final row in purchases) {
+            if (row['id'] != id && sameBill(row)) {
+              throw DuplicateEntryException.purchase(row['id'] as int,
+                  billNo: (values['bill_no'] as String).trim(),
+                  agency: _key(values['agency_name']).isNotEmpty
+                      ? (values['agency_name'] as String).trim()
+                      : (values['agency_code'] as String).trim());
+            }
           }
         }
       }

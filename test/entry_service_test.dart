@@ -25,6 +25,95 @@ void main() {
       TransactionModel(id: id, type: 'sale', date: date, totalAmount: amount)
           .toMap();
 
+  Map<String, dynamic> purchase(
+          {String code = 'A',
+          String name = 'Agency A',
+          String bill = 'INV-001',
+          String type = 'purchase_cash',
+          int? id}) =>
+      TransactionModel(
+              id: id,
+              type: type,
+              date: '2026-09-24',
+              totalAmount: 100,
+              agencyCode: code,
+              agencyName: name,
+              billNo: bill)
+          .toMap();
+
+  test('same agency bill is blocked across cash/credit, dates and amounts',
+      () async {
+    await EntryService.save(db, 'transactions', purchase());
+    await expectLater(
+        EntryService.save(
+            db,
+            'transactions',
+            {
+              ...purchase(
+                  code: ' a ', bill: ' inv-001 ', type: 'purchase_credit'),
+              'date': '2026-09-25',
+              'total_amount': 999,
+            },
+            allowDuplicate: true),
+        throwsA(isA<DuplicateEntryException>()
+            .having((e) => e.isPurchase, 'purchase warning', true)));
+    expect((await db.query('transactions')).single['total_amount'], 100);
+  });
+  test('different agencies, bills and profiles are independent', () async {
+    await EntryService.save(db, 'transactions', purchase());
+    await EntryService.save(db, 'transactions', purchase(code: 'B'));
+    await EntryService.save(db, 'transactions', purchase(bill: 'INV-002'));
+    expect((await db.query('transactions')).length, 3);
+    await service.selectProfile('0123456789abcdef0123456789abcdef');
+    final otherDb = await service.database;
+    await EntryService.save(otherDb, 'transactions', purchase());
+    expect((await otherDb.query('transactions')).length, 1);
+  });
+  test('legacy agency names are matched when a code is missing', () async {
+    await EntryService.save(db, 'transactions', purchase(code: ''));
+    await expectLater(
+        EntryService.save(db, 'transactions', purchase(name: ' agency a ')),
+        throwsA(isA<DuplicateEntryException>()));
+    await EntryService.save(
+        db, 'transactions', purchase(code: '', name: 'Agency B'));
+  });
+  test('blank bill numbers or unknown agencies do not cause false duplicates',
+      () async {
+    for (var i = 0; i < 2; i++) {
+      await EntryService.save(db, 'transactions', purchase(bill: ' '));
+      await EntryService.save(db, 'transactions', purchase(code: '', name: ''));
+    }
+    expect((await db.query('transactions')).length, 4);
+  });
+  test('purchase edits preserve legacy duplicates but reject occupied keys',
+      () async {
+    final id = await db.insert('transactions', purchase());
+    await db.insert('transactions', purchase());
+    await EntryService.save(
+        db, 'transactions', {...purchase(id: id), 'total_amount': 125});
+    final other =
+        await EntryService.save(db, 'transactions', purchase(bill: 'INV-002'));
+    await expectLater(
+        EntryService.save(db, 'transactions', purchase(id: other)),
+        throwsA(isA<DuplicateEntryException>()));
+    expect((await db.query('transactions')).length, 3);
+    expect(
+        (await db.query('transactions', where: 'id = ?', whereArgs: [other]))
+            .single['bill_no'],
+        'INV-002');
+  });
+  test('concurrent duplicate purchase attempts save only once', () async {
+    final results = await Future.wait(List.generate(2, (_) async {
+      try {
+        await EntryService.save(db, 'transactions', purchase());
+        return true;
+      } on DuplicateEntryException {
+        return false;
+      }
+    }));
+    expect(results.where((value) => value).length, 1);
+  });
+
   test('duplicate on same displayed date is rejected without changing rows',
       () async {
     await EntryService.save(db, 'transactions', sale('2026-09-24T09:00:00'));
