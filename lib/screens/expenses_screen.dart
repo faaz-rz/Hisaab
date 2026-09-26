@@ -11,6 +11,7 @@ import '../widgets/confirm_delete_dialog.dart';
 import '../mixins/date_filter_mixin.dart';
 import '../services/csv_export_service.dart';
 import '../services/pdf_service.dart';
+import '../services/expense_report.dart';
 import '../main.dart';
 
 class _CategoryExpenseSummary {
@@ -36,6 +37,116 @@ class _ExpensesScreenState extends ConsumerState<ExpensesScreen>
     with DateFilterMixin<ExpensesScreen> {
   final _searchCtrl = TextEditingController();
   String _searchQuery = '';
+  int? _categoryId;
+  String? _expenseClass;
+
+  String _classKey(String? value) => (value ?? '').trim().toLowerCase();
+
+  bool _matchesFilters(Expense expense) {
+    if (_categoryId != null && expense.categoryId != _categoryId) return false;
+    if (_expenseClass != null &&
+        _classKey(expense.subcategory) != _expenseClass) return false;
+    if (dateRange == null) return true;
+    final date = DateTime.tryParse(expense.date);
+    if (date == null) return false;
+    final day = DateTime(date.year, date.month, date.day);
+    final start = dateRange!.start;
+    final end = dateRange!.end;
+    return !day.isBefore(DateTime(start.year, start.month, start.day)) &&
+        !day.isAfter(DateTime(end.year, end.month, end.day));
+  }
+
+  String _reportLabel(DateFormat fmtDate, List<ExpenseCategory> categories) => [
+        _periodLabel(fmtDate),
+        'Category: ${_categoryId == null ? 'All categories' : _categoryNameFor(_categoryId!, categories)}',
+        'Class: ${_expenseClass == null ? 'All classes' : _expenseClass!.isEmpty ? 'No class' : _expenseClass}',
+        if (_searchQuery.trim().isNotEmpty) 'Search: ${_searchQuery.trim()}',
+      ].join(' • ');
+
+  Widget _filters(List<Expense> allExpenses, List<ExpenseCategory> categories) {
+    final categoryNames = <int, String>{
+      for (final category in categories)
+        if (category.id != null) category.id!: category.name,
+      for (final expense in allExpenses)
+        expense.categoryId: _categoryNameFor(expense.categoryId, categories),
+      if (_categoryId != null)
+        _categoryId!: _categoryNameFor(_categoryId!, categories),
+    };
+    final categoryOptions = categoryNames.entries.toList()
+      ..sort((a, b) => a.value.toLowerCase().compareTo(b.value.toLowerCase()));
+    final classes = <String, String>{
+      for (final expense in allExpenses)
+        if (_categoryId == null || expense.categoryId == _categoryId)
+          _classKey(expense.subcategory): (expense.subcategory ?? '').trim(),
+      if (_expenseClass != null) _expenseClass!: _expenseClass!,
+    };
+    final classOptions = classes.entries.toList()
+      ..sort((a, b) => a.key.compareTo(b.key));
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(20, 0, 20, 12),
+      child: LayoutBuilder(builder: (context, constraints) {
+        final width = constraints.maxWidth < 540
+            ? constraints.maxWidth
+            : (constraints.maxWidth - 12) / 2;
+        return Wrap(spacing: 12, runSpacing: 12, children: [
+          SizedBox(
+              width: width,
+              child: DropdownButtonFormField<int>(
+                key: ValueKey('expense-category-$_categoryId'),
+                initialValue: _categoryId,
+                isExpanded: true,
+                decoration: const InputDecoration(labelText: 'Category filter'),
+                items: [
+                  const DropdownMenuItem<int>(
+                      value: null, child: Text('All categories')),
+                  for (final option in categoryOptions)
+                    DropdownMenuItem(
+                        value: option.key,
+                        child:
+                            Text(option.value, overflow: TextOverflow.ellipsis))
+                ],
+                onChanged: (value) => setState(() {
+                  _categoryId = value;
+                  _expenseClass = null;
+                }),
+              )),
+          SizedBox(
+              width: width,
+              child: DropdownButtonFormField<String>(
+                key: ValueKey('expense-class-$_categoryId-$_expenseClass'),
+                initialValue: _expenseClass,
+                isExpanded: true,
+                decoration: const InputDecoration(labelText: 'Class filter'),
+                items: [
+                  const DropdownMenuItem<String>(
+                      value: null, child: Text('All classes')),
+                  for (final option in classOptions)
+                    DropdownMenuItem(
+                        value: option.key,
+                        child: Text(
+                            option.key.isEmpty ? 'No class' : option.value,
+                            overflow: TextOverflow.ellipsis))
+                ],
+                onChanged: (value) => setState(() => _expenseClass = value),
+              )),
+          if (_categoryId != null ||
+              _expenseClass != null ||
+              dateRange != null ||
+              _searchQuery.isNotEmpty)
+            TextButton.icon(
+                onPressed: () => setState(() {
+                      _categoryId = null;
+                      _expenseClass = null;
+                      dateRange = null;
+                      _searchQuery = '';
+                      _searchCtrl.clear();
+                    }),
+                icon: const Icon(Icons.filter_alt_off_outlined, size: 18),
+                label: const Text('Clear all filters')),
+        ]);
+      }),
+    );
+  }
 
   @override
   void dispose() {
@@ -91,22 +202,7 @@ class _ExpensesScreenState extends ConsumerState<ExpensesScreen>
     required NumberFormat fmt,
     required DateFormat fmtDate,
   }) {
-    return expenses.map<List<String>>((e) {
-      final category = _categoryFor(e.categoryId, categories);
-      return <String>[
-        fmtDate.format(DateTime.parse(e.date)),
-        category?.name ?? 'Unknown',
-        e.subcategory ?? '-',
-        e.item ?? '-',
-        e.paymentMethod == null
-            ? '-'
-            : e.paymentMethod == 'other'
-                ? 'Other'
-                : 'Cash',
-        e.note ?? '-',
-        fmt.format(e.amount),
-      ];
-    }).toList();
+    return ExpenseReport.rows(expenses, categories, fmt, fmtDate);
   }
 
   Future<void> _confirmDeleteExpense(
@@ -418,7 +514,7 @@ class _ExpensesScreenState extends ConsumerState<ExpensesScreen>
         data: (allExpenses) {
           final categories = categoriesAsync.valueOrNull ?? [];
           final expenses = allExpenses
-              .where((e) => isWithinRange(e.date))
+              .where(_matchesFilters)
               .where((e) => _matchesSearch(e, categories))
               .toList();
           if (allExpenses.isEmpty) {
@@ -470,7 +566,7 @@ class _ExpensesScreenState extends ConsumerState<ExpensesScreen>
                               fontWeight: FontWeight.w800,
                               color: AppColors.danger)),
                       const SizedBox(height: 2),
-                      Text(_periodLabel(fmtDate),
+                      Text(_reportLabel(fmtDate, categories),
                           style: GoogleFonts.inter(
                               fontSize: 12,
                               color: AppColors.textSecondary,
@@ -494,18 +590,8 @@ class _ExpensesScreenState extends ConsumerState<ExpensesScreen>
 
                           await PdfService.generateAndPrintPdf(
                             title: 'Expenses Report',
-                            subtitle: dateRange != null
-                                ? 'From: ${fmtDate.format(dateRange!.start)} To: ${fmtDate.format(dateRange!.end)}'
-                                : 'Up to date',
-                            headers: [
-                              'Date',
-                              'Category',
-                              'Class',
-                              'Item',
-                              'Payment',
-                              'Comments',
-                              'Amount'
-                            ],
+                            subtitle: _reportLabel(fmtDate, categories),
+                            headers: ExpenseReport.headers,
                             data: data,
                             totalAmountLabel: 'Total Expenses:',
                             totalAmount: fmt.format(totalExpenses),
@@ -535,18 +621,8 @@ class _ExpensesScreenState extends ConsumerState<ExpensesScreen>
 
                           await CsvExportService.generateAndOpenCsv(
                             title: 'Expenses Report',
-                            subtitle: dateRange != null
-                                ? 'From: ${fmtDate.format(dateRange!.start)} To: ${fmtDate.format(dateRange!.end)}'
-                                : 'Up to date',
-                            headers: [
-                              'Date',
-                              'Category',
-                              'Class',
-                              'Item',
-                              'Payment',
-                              'Comments',
-                              'Amount'
-                            ],
+                            subtitle: _reportLabel(fmtDate, categories),
+                            headers: ExpenseReport.headers,
                             data: data,
                             totalAmountLabel: 'Total Expenses:',
                             totalAmount: fmt.format(totalExpenses),
@@ -564,6 +640,7 @@ class _ExpensesScreenState extends ConsumerState<ExpensesScreen>
                   ),
                 ),
               ),
+              _filters(allExpenses, categories),
               Padding(
                 padding: const EdgeInsets.fromLTRB(20, 0, 20, 12),
                 child: TextField(
@@ -643,7 +720,7 @@ class _ExpensesScreenState extends ConsumerState<ExpensesScreen>
 
                     if (expenses.isEmpty) {
                       return _EmptyExpensePeriodPanel(
-                        periodLabel: _periodLabel(fmtDate),
+                        periodLabel: _reportLabel(fmtDate, categories),
                       );
                     }
 
@@ -1039,7 +1116,7 @@ class _EmptyExpensePeriodPanel extends StatelessWidget {
               size: 42, color: AppColors.textSecondary.withOpacity(0.35)),
           const SizedBox(height: 10),
           Text(
-            'No expenses in this period',
+            'No expenses match these filters',
             style: GoogleFonts.inter(
               fontSize: 14,
               fontWeight: FontWeight.w700,

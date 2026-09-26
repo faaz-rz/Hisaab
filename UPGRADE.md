@@ -1,6 +1,12 @@
-# HISAAB 1.3.1 — purchase bill-number protection
+# HISAAB 1.3.2 — category and class expense reports
 
 This version refreshes navigation, dashboard metrics, page headings, summaries, tabs and forms while keeping the existing navy-and-teal palette, business fields, reports and actions. The violet-and-gold logo and all profile/shared-ledger features remain included. The app name, database schema and data locations are unchanged by this update.
+
+## Category and class expense reports
+
+On Expenses, choose a Category (for example Salary) and optionally a Class. Classes come from existing entries in the selected category; changing category clears the class selection. All categories/classes and No class are available, including historical records in hidden categories. Class matching ignores case and surrounding spaces.
+
+The list, total and category analytics follow these filters together with the date range and search. PDF and CSV export the same filtered records and total, with the selected filters in the report heading and a Staff column for salary details. Clear all filters restores the full view. Date boundaries include each selected calendar day. Filtering never edits or deletes records; the database schema and storage paths remain unchanged.
 
 ## Sales-date protection
 
